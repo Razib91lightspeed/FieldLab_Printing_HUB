@@ -1,46 +1,227 @@
-# Getting Started with Create React App
+# FIELDLAB - 3D Printer Monitoring Dashboard
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A modern, real-time dashboard for monitoring Bambu Lab 3D printers in lab environments. Features a clean white/purple design with 3D visual effects, live data visualization, and a dedicated large-display mode for wall-mounted screens.
 
-## Available Scripts
+![FIELDLAB Dashboard](https://img.shields.io/badge/React-18.2.0-61DAFB?logo=react)
+![TypeScript](https://img.shields.io/badge/TypeScript-4.9.5-3178C6?logo=typescript)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.3.0-06B6D4?logo=tailwindcss)
 
-In the project directory, you can run:
+## Features
 
-### `npm start`
+### Core Functionality
+- **Real-time Monitoring**: Live temperature, progress, and status updates for all printers
+- **Fleet Overview**: Dashboard showing all 5 printers at a glance
+- **Detailed View**: Deep-dive into individual printer telemetry
+- **Alert System**: Centralized error tracking and history
+- **Large Display Mode**: Optimized visualization page for wall-mounted displays
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+### Visual Design
+- **3D Depth Effects**: Cards, buttons, and logo with realistic shadows and gradients
+- **FIELDLAB Branding**: Custom logo matching your 3D printed sign (cream + purple)
+- **Color Scheme**: Clean white, black, and purple palette
+- **Responsive Layout**: Works on desktop, tablet, and large displays
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+### Data Visualization
+- **Progress Bar Chart**: Compare print completion across all printers
+- **Status Pie Chart**: Visual breakdown of printer states
+- **Material Usage Chart**: Distribution of filament types in use
+- **Live Statistics**: Active jobs, average progress, temperature averages
 
-### `npm test`
+## Tech Stack
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+- **Frontend**: React 18 + TypeScript
+- **Styling**: Tailwind CSS with custom 3D shadow effects
+- **Charts**: Recharts library
+- **Icons**: Lucide React
+- **Build Tool**: Create React App
 
-### `npm run build`
+---
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## 📂 Project Structure
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+```text
+printer-lab-dashboard/
+├── public/
+│   └── index.html
+├── src/
+│   ├── components/
+│   │   ├── common/
+│   │   │   ├── Logo.tsx          # Reusable FIELDLAB logo
+│   │   │   └── StatusBadge.tsx   # Status indicator component
+│   │   ├── layout/
+│   │   │   └── Navbar.tsx        # Navigation bar
+│   │   └── printer/
+│   │       └── PrinterCard.tsx   # Printer card component
+│   ├── views/
+│   │   ├── FleetView.tsx         # Main dashboard
+│   │   ├── PrinterDetailView.tsx # Single printer details
+│   │   ├── AlertsView.tsx        # Alert history
+│   │   └── VisualizationView.tsx # Large display mode
+│   ├── hooks/
+│   │   └── usePrinters.ts        # Live data simulation hook
+│   ├── data/
+│   │   ├── mockPrinters.ts       # Mock printer data (Bambu A1-A5)
+│   │   └── mockAlerts.ts         # Mock alert data
+│   ├── types/
+│   │   └── index.ts              # TypeScript interfaces
+│   ├── utils/
+│   │   ├── constants.ts          # App constants
+│   │   └── formatters.ts         # Data formatters
+│   ├── App.tsx                   # Main application
+│   └── index.tsx                 # Entry point
+├── tailwind.config.js            # Tailwind configuration
+└── package.json
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## 🚀 Getting Started
 
-### `npm run eject`
+### Prerequisites
+- **Node.js 16+**
+- **npm or yarn**
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+### Installation
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+1. **Clone or create the project**
+   ```bash
+   npx create-react-app printer-lab-dashboard --template typescript
+   cd printer-lab-dashboard
+   ```
+2. **Install core dependencies**
+    ```bash
+    npm install
+    ```
+3. **Install additional UI packages**
+    ```bash
+    npm install recharts lucide-react
+    npm install -D tailwindcss postcss autoprefixer
+    npx tailwindcss init -p
+    ```
+## 🛠️ Configuration
+1. **Configure Tailwind**
+**Update your tailwind.config.js with the custom lab theme:**
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+```bash
+module.exports = {
+  content: ["./src/**/*.{js,jsx,ts,tsx}"],
+  theme: {
+    extend: {
+      colors: {
+        lab: {
+          bg: '#F8F7FC',
+          primary: '#8B5CF6',
+          secondary: '#A78BFA',
+          accent: '#EDE9FE',
+        }
+      }
+    },
+  },
+  plugins: [],
+}
+```
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
 
-## Learn More
+2. **Add Tailwind Directives**
+**Add the following to the top of your src/index.css:**
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+```bash
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
+## 💻 Usage
+3. **Development Server**
+```bash
+npm start
+```
+View the app at
+```bash
+http://localhost:3000.
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+### Navigation Guide
+
+| Page | Description | Access |
+| :--- | :--- | :--- |
+| **Dashboard** | Fleet overview with all 5 printers | Click "Dashboard" in nav |
+| **Printer Detail** | Individual printer telemetry | Click any printer card |
+| **Alerts** | Error history and warnings | Click "Alerts" in nav |
+| **Display Mode** | Large visualization for wall screens | Click "Display" in nav |
+
+### Display Mode (Wall Mount)
+The Display page is optimized for 24/7 monitoring on large screens:
+- **Auto-updating** charts and statistics.
+- **High Contrast** text readable from 10+ feet away.
+- **Full-Screen** experience (hidden navbar).
+
+---
+### Navigation Guide
+
+| Page | Description | Access |
+| :--- | :--- | :--- |
+| **Dashboard** | Fleet overview with all 5 printers | Click "Dashboard" in nav |
+| **Printer Detail** | Individual printer telemetry | Click any printer card |
+| **Alerts** | Error history and warnings | Click "Alerts" in nav |
+| **Display Mode** | Large visualization for wall screens | Click "Display" in nav |
+
+### Display Mode (Wall Mount)
+The Display page is optimized for 24/7 monitoring on large screens:
+- **Auto-updating** charts and statistics.
+- **High Contrast** text readable from 10+ feet away.
+- **Full-Screen** experience (hidden navbar).
+
+---
+
+### ⚙️ Customization
+
+#### Change Printer Names
+Edit `src/data/mockPrinters.ts`:
+```typescript
+export const INITIAL_PRINTERS: PrinterData[] = [
+  { id: 'p1', name: 'Bambu-X1-Carbon', ... },
+];
+```
+
+
+#### Change Printer Names
+Edit `src/data/mockPrinters.ts`:
+```typescript
+export const INITIAL_PRINTERS: PrinterData[] = [
+  { id: 'p1', name: 'Bambu-X1-Carbon', ... },
+];
+```
+
+#### Connect Real Data
+Replace the simulation logic in `src/hooks/usePrinters.ts` with your API:
+```typescript
+// Example:
+const response = await fetch('https://your-api-endpoint.com/printers');
+const data = await response.json();
+setPrinters(data);
+```
+
+---
+
+### ⚠️ Troubleshooting
+
+| Issue | Solution |
+| :--- | :--- |
+| `react-scripts` not found | Run `npm install` |
+| Module not found | Delete `node_modules` and `npm install` |
+| Port 3000 in use | `PORT=3001 npm start` |
+| Charts not rendering | Ensure `recharts` is installed via npm |
+
+---
+
+### 🔮 Future Enhancements
+- [ ] WebSocket integration for real-time telemetry.
+- [ ] Dark mode toggle.
+- [ ] Material inventory tracking.
+- [ ] Print time estimation AI.
+- [ ] Mobile app companion.
+
+---
+
+### 📄 License
+MIT License - Feel free to use and modify for your lab.
+
+**Credits:** Design inspired by FIELDLAB 3D signs. Built with Tailwind CSS and Recharts.
