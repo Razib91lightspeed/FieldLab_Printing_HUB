@@ -10,64 +10,50 @@ export const Navbar: React.FC<Props> = ({ currentView, onViewChange }) => {
   const navItems: { label: string; view: ViewType }[] = [
     { label: 'Dashboard', view: 'fleet' },
     { label: 'Alerts', view: 'alerts' },
+    { label: 'Display', view: 'visualization' },
   ];
 
+  // 3D text effect style for navigation
+  const navTextStyle = {
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    textShadow: '0px 1px 0px rgba(255,255,255,0.8), 0px -1px 0px rgba(0,0,0,0.1)',
+    letterSpacing: '0.02em'
+  };
+
   return (
-    <nav className="bg-white border-b border-lab-accent px-6 py-3 flex justify-between items-center sticky top-0 z-10">
+    <nav 
+      className="border-b border-gray-200 px-6 py-3 flex justify-between items-center sticky top-0 z-10"
+      style={{ backgroundColor: '#F3F4F6' }}
+    >
       <div className="flex items-center gap-8">
-        {/* FIELD LAB Logo - 3D printed embossed style */}
+        {/* FIELDLAB Logo */}
         <div className="flex items-center select-none">
-          {/* FIELD - cream background with embossed purple letters */}
           <div 
-            className="px-4 py-2.5 rounded-l-lg"
-            style={{ 
-              backgroundColor: '#F2F0E6', // Warm cream
-              boxShadow: `
-                inset 0 1px 2px rgba(255,255,255,0.8),
-                inset 0 -1px 2px rgba(0,0,0,0.1),
-                0 2px 4px rgba(0,0,0,0.08)
-              `,
-              border: '1px solid rgba(139, 92, 246, 0.15)'
-            }}
+            className="px-3 py-2 rounded-l-md shadow-sm"
+            style={{ backgroundColor: '#FFFFFF' }}
           >
             <span 
-              className="text-2xl font-black"
+              className="text-xl font-black tracking-tight"
               style={{ 
-                color: 'transparent',
-                backgroundColor: '#7C3AED', // Deeper purple
-                backgroundClip: 'text',
-                WebkitBackgroundClip: 'text',
-                textShadow: '0px 1px 0px rgba(255,255,255,0.3)',
-                fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif',
-                letterSpacing: '0.12em',
-                // Embossed effect
-                filter: 'drop-shadow(0px 1px 0px rgba(0,0,0,0.1))'
+                color: '#7C3AED',
+                fontFamily: 'system-ui, -apple-system, sans-serif',
+                letterSpacing: '0.02em'
               }}
             >
               FIELD
             </span>
           </div>
           
-          {/* LAB - purple background with embossed cream letters */}
           <div 
-            className="px-4 py-2.5 rounded-r-lg -ml-px"
-            style={{ 
-              backgroundColor: '#7C3AED', // Purple
-              boxShadow: `
-                inset 0 1px 2px rgba(255,255,255,0.2),
-                inset 0 -1px 3px rgba(0,0,0,0.3),
-                0 2px 4px rgba(0,0,0,0.15)
-              `,
-              border: '1px solid rgba(139, 92, 246, 0.3)'
-            }}
+            className="px-3 py-2 rounded-r-md shadow-sm"
+            style={{ backgroundColor: '#7C3AED' }}
           >
             <span 
-              className="text-2xl font-black"
+              className="text-xl font-black tracking-tight"
               style={{ 
-                color: '#F2F0E6', // Cream
-                fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif',
-                letterSpacing: '0.12em',
-                textShadow: '0px -1px 1px rgba(0,0,0,0.3), 0px 1px 1px rgba(255,255,255,0.1)'
+                color: '#FFFFFF',
+                fontFamily: 'system-ui, -apple-system, sans-serif',
+                letterSpacing: '0.02em'
               }}
             >
               LAB
@@ -75,26 +61,38 @@ export const Navbar: React.FC<Props> = ({ currentView, onViewChange }) => {
           </div>
         </div>
 
-        {/* Navigation */}
-        <div className="flex gap-6 text-sm font-medium text-lab-subtext">
+        {/* Navigation with 3D effect */}
+        <div className="flex gap-6 text-sm font-bold">
           {navItems.map(({ label, view }) => (
             <button
               key={view}
               onClick={() => onViewChange(view)}
-              className={`hover:text-lab-primary transition-colors ${
-                currentView === view ? 'text-lab-primary' : ''
+              className={`transition-all hover:scale-105 ${
+                currentView === view ? 'text-purple-600' : 'text-gray-600'
               }`}
+              style={navTextStyle}
             >
               {label}
             </button>
           ))}
-          <button className="hover:text-lab-primary transition-colors">Settings</button>
+          <button 
+            className="text-gray-600 transition-all hover:scale-105"
+            style={navTextStyle}
+          >
+            Settings
+          </button>
         </div>
       </div>
       
-      {/* User Avatar */}
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-full bg-lab-accent flex items-center justify-center text-lab-primary font-bold text-xs">
+        <div 
+          className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shadow-sm"
+          style={{ 
+            backgroundColor: '#E5E7EB',
+            color: '#374151',
+            textShadow: '0px 1px 0px rgba(255,255,255,0.8)'
+          }}
+        >
           OP
         </div>
       </div>

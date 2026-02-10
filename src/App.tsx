@@ -3,6 +3,7 @@ import { Navbar } from './components/layout/Navbar';
 import { FleetView } from './views/FleetView';
 import { PrinterDetailView } from './views/PrinterDetailView';
 import { AlertsView } from './views/AlertsView';
+import { VisualizationView } from './views/VisualizationView';
 import { usePrinters } from './hooks/usePrinters';
 import { ViewType } from './types';
 
@@ -13,9 +14,13 @@ function App() {
 
   const selectedPrinter = printers.find(p => p.id === selectedPrinterId);
 
+  // Hide navbar for visualization view (full screen display mode)
+  const showNavbar = view !== 'visualization';
+
   return (
     <div className="min-h-screen bg-lab-bg font-sans text-lab-text">
-      <Navbar currentView={view} onViewChange={setView} />
+      {showNavbar && <Navbar currentView={view} onViewChange={setView} />}
+      
       <main>
         {view === 'fleet' && (
           <FleetView 
@@ -35,6 +40,12 @@ function App() {
         )}
         {view === 'alerts' && (
           <AlertsView onBack={() => setView('fleet')} />
+        )}
+        {view === 'visualization' && (
+          <VisualizationView 
+            printers={printers}
+            onBack={() => setView('fleet')}
+          />
         )}
       </main>
     </div>

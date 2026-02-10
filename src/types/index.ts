@@ -1,5 +1,7 @@
 export type PrinterStatus = 'printing' | 'idle' | 'error' | 'finished';
 
+export type ViewType = 'fleet' | 'detail' | 'alerts' | 'visualization';
+
 export interface PrinterData {
   id: string;
   name: string;
@@ -26,5 +28,3 @@ export interface AlertItem {
   message: string;
   status: 'active' | 'resolved' | 'pending';
 }
-
-export type ViewType = 'fleet' | 'detail' | 'alerts';
