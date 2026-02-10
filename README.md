@@ -217,7 +217,7 @@ setPrinters(data);
 - [ ] Dark mode toggle.
 - [ ] Material inventory tracking.
 - [ ] Print time estimation AI.
-- [ ] Mobile app companion.
+- [ ] Real data integration.
 
 ---
 
