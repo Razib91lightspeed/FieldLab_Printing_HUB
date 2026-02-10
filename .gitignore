@@ -1,0 +1,167 @@
+# === Dependencies ===
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# === Production Build ===
+/build
+/dist
+
+# === Testing ===
+/coverage
+
+# === Environment Variables ===
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# === IDE / Editor ===
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# WebStorm / IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Atom
+.atom/
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# === OS Generated Files ===
+# macOS
+.DS_Store
+.DS_Store?
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.nfs*
+
+# === Logs ===
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# === Runtime Data ===
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# === TypeScript ===
+*.tsbuildinfo
+
+# === Optional npm Cache Directory ===
+.npm
+
+# === Optional Eslint Cache ===
+.eslintcache
+
+# === Optional Stylelint Cache ===
+.stylelintcache
+
+# === Microbundle Cache ===
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# === Optional REPL History ===
+.node_repl_history
+
+# === Output of 'npm pack' ===
+*.tgz
+
+# === Yarn ===
+.yarn-integrity
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# === Parcel Bundler Cache ===
+.cache
+.parcel-cache
+
+# === Next.js / Nuxt.js / Gatsby ===
+.next
+.nuxt
+.gatsby-cache
+public/static
+
+# === Storybook ===
+storybook-static
+
+# === Temporary Folders ===
+tmp/
+temp/
+
+# === Local Database Files ===
+*.sqlite
+*.sqlite3
+*.db
+
+# === Misc ===
+*.log
+*.bak
+*.backup
+*.orig
+*.rej
+.sass-cache/
+.connect.lock
+
+# === React Specific ===
+# Local env files with secrets
+.env*.local
+
+# === Project Specific ===
+# Add any project-specific files to ignore below
+# e.g., local mock data that shouldn't be committed
+# /src/data/local-mocks/
