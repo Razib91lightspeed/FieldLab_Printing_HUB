@@ -1,5 +1,6 @@
 import React from 'react';
 import { ViewType } from '../../types';
+import { Logo } from '../common/Logo';
 
 interface Props {
   currentView: ViewType;
@@ -26,40 +27,8 @@ export const Navbar: React.FC<Props> = ({ currentView, onViewChange }) => {
       style={{ backgroundColor: '#F3F4F6' }}
     >
       <div className="flex items-center gap-8">
-        {/* FIELDLAB Logo */}
-        <div className="flex items-center select-none">
-          <div 
-            className="px-3 py-2 rounded-l-md shadow-sm"
-            style={{ backgroundColor: '#FFFFFF' }}
-          >
-            <span 
-              className="text-xl font-black tracking-tight"
-              style={{ 
-                color: '#7C3AED',
-                fontFamily: 'system-ui, -apple-system, sans-serif',
-                letterSpacing: '0.02em'
-              }}
-            >
-              FIELD
-            </span>
-          </div>
-          
-          <div 
-            className="px-3 py-2 rounded-r-md shadow-sm"
-            style={{ backgroundColor: '#7C3AED' }}
-          >
-            <span 
-              className="text-xl font-black tracking-tight"
-              style={{ 
-                color: '#FFFFFF',
-                fontFamily: 'system-ui, -apple-system, sans-serif',
-                letterSpacing: '0.02em'
-              }}
-            >
-              LAB
-            </span>
-          </div>
-        </div>
+        {/* Reusable Logo */}
+        <Logo size="md" />
 
         {/* Navigation with 3D effect */}
         <div className="flex gap-6 text-sm font-bold">
