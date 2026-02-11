@@ -4,6 +4,7 @@ import { FleetView } from './views/FleetView';
 import { PrinterDetailView } from './views/PrinterDetailView';
 import { AlertsView } from './views/AlertsView';
 import { VisualizationView } from './views/VisualizationView';
+import { BookingVizView } from './views/BookingVizView';
 import { usePrinters } from './hooks/usePrinters';
 import { ViewType } from './types';
 
@@ -14,8 +15,7 @@ function App() {
 
   const selectedPrinter = printers.find(p => p.id === selectedPrinterId);
 
-  // Hide navbar for visualization view (full screen display mode)
-  const showNavbar = view !== 'visualization';
+  const showNavbar = view !== 'visualization' && view !== 'booking';
 
   return (
     <div className="min-h-screen bg-lab-bg font-sans text-lab-text">
@@ -44,6 +44,11 @@ function App() {
         {view === 'visualization' && (
           <VisualizationView 
             printers={printers}
+            onBack={() => setView('fleet')}
+          />
+        )}
+        {view === 'booking' && (
+          <BookingVizView 
             onBack={() => setView('fleet')}
           />
         )}

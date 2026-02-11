@@ -12,9 +12,9 @@ export const Navbar: React.FC<Props> = ({ currentView, onViewChange }) => {
     { label: 'Dashboard', view: 'fleet' },
     { label: 'Alerts', view: 'alerts' },
     { label: 'Display', view: 'visualization' },
+    { label: 'Booking', view: 'booking' },
   ];
 
-  // 3D text effect style for navigation
   const navTextStyle = {
     fontFamily: 'system-ui, -apple-system, sans-serif',
     textShadow: '0px 1px 0px rgba(255,255,255,0.8), 0px -1px 0px rgba(0,0,0,0.1)',
@@ -27,10 +27,8 @@ export const Navbar: React.FC<Props> = ({ currentView, onViewChange }) => {
       style={{ backgroundColor: '#F3F4F6' }}
     >
       <div className="flex items-center gap-8">
-        {/* Reusable Logo */}
         <Logo size="md" />
 
-        {/* Navigation with 3D effect */}
         <div className="flex gap-6 text-sm font-bold">
           {navItems.map(({ label, view }) => (
             <button
