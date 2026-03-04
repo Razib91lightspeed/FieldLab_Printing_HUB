@@ -1,106 +1,260 @@
-# FIELDLAB - 3D Printer Monitoring Dashboard
+# FIELDLAB – 3D Printer Monitoring & Booking Compliance Dashboard
 
-A modern, real-time dashboard for monitoring Bambu Lab 3D printers in lab environments. Features a clean white/purple design with 3D visual effects, live data visualization, and a dedicated large-display mode for wall-mounted screens.
+A modern **real-time monitoring dashboard** for Bambu Lab 3D printers used in laboratory environments such as **FIELDLAB**.
 
-![FIELDLAB Dashboard](https://img.shields.io/badge/React-18.2.0-61DAFB?logo=react)
-![TypeScript](https://img.shields.io/badge/TypeScript-4.9.5-3178C6?logo=typescript)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.3.0-06B6D4?logo=tailwindcss)
+The system provides:
 
-## Features
+- Fleet monitoring of multiple printers
+- Booking compliance verification
+- Utilization analytics
+- Visualization dashboards for large displays
 
-### Core Functionality
-- **Real-time Monitoring**: Live temperature, progress, and status updates for all printers
-- **Fleet Overview**: Dashboard showing all 5 printers at a glance
-- **Detailed View**: Deep-dive into individual printer telemetry
-- **Alert System**: Centralized error tracking and history
-- **Large Display Mode**: Optimized visualization page for wall-mounted displays
-
-### Visual Design
-- **3D Depth Effects**: Cards, buttons, and logo with realistic shadows and gradients
-- **FIELDLAB Branding**: Custom logo matching your 3D printed sign (cream + purple)
-- **Color Scheme**: Clean white, black, and purple palette
-- **Responsive Layout**: Works on desktop, tablet, and large displays
-
-### Data Visualization
-- **Progress Bar Chart**: Compare print completion across all printers
-- **Status Pie Chart**: Visual breakdown of printer states
-- **Material Usage Chart**: Distribution of filament types in use
-- **Live Statistics**: Active jobs, average progress, temperature averages
-
-## Tech Stack
-
-- **Frontend**: React 18 + TypeScript
-- **Styling**: Tailwind CSS with custom 3D shadow effects
-- **Charts**: Recharts library
-- **Icons**: Lucide React
-- **Build Tool**: Create React App
+The platform integrates **3D printer telemetry and booking data** to ensure printers are used according to lab reservation schedules.
 
 ---
 
-## 📂 Project Structure
+![React](https://img.shields.io/badge/React-18.2.0-61DAFB?logo=react)
+![TypeScript](https://img.shields.io/badge/TypeScript-4.9.5-3178C6?logo=typescript)
+![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-3.3.0-06B6D4?logo=tailwindcss)
 
-```text
+---
+
+# Overview
+
+FIELDLAB Dashboard helps **lab managers, researchers, and students** monitor multiple 3D printers simultaneously.
+
+The system combines:
+
+- Printer monitoring
+- Booking compliance verification
+- Utilization analytics
+- Visualization dashboards
+
+The interface is optimized for **large display screens used in laboratory spaces**, allowing teams to quickly identify printer activity and booking compliance.
+
+---
+
+# Key Features
+
+## Real-Time Fleet Monitoring
+
+- Monitor **all printers simultaneously**
+- Track **print progress and status**
+- Visual indicators for **activity and booking compliance**
+
+---
+
+## Booking Compliance Monitoring
+
+The system integrates **Peppi / TUNI booking data** to determine whether a printer is being used according to reservation schedules.
+
+Possible system states:
+
+| Printer State | Booking Status | Result |
+|---------------|---------------|--------|
+| Printing + Booking | Authorized usage |
+| Printing + No Booking | Unauthorized usage |
+| Booked + Not Printing | Reserved |
+| Not Booked + Not Printing | Idle |
+
+This allows the system to detect **improper printer usage in shared labs**.
+
+---
+
+## Utilization Tracking
+
+Printer utilization is calculated dynamically using booking time.
+
+```
+utilizationRate =
+(currentTime - bookingStart) /
+(bookingEnd - bookingStart)
+```
+
+This value is displayed as a **progress bar in each printer card**.
+
+---
+
+## Visualization Dashboard
+
+The system includes a **visual analytics dashboard** showing:
+
+- Booking status distribution
+- Printer utilization rates
+- Fleet-level statistics
+- Average usage metrics
+
+Charts are implemented using **Recharts**.
+
+---
+
+## Large Display Mode
+
+Designed for **wall-mounted screens in laboratory environments**.
+
+Features include:
+
+- High contrast UI
+- Large typography
+- Auto-refreshing data
+- Easy-to-read printer status indicators
+
+---
+
+# Tech Stack
+
+### Frontend
+
+- React 18
+- TypeScript
+- Tailwind CSS
+
+### Visualization
+
+- Recharts
+
+### UI Components
+
+- Lucide React Icons
+
+### Build System
+
+- Create React App
+
+Future integrations:
+
+- Bambu printer telemetry
+- MQTT
+- FIWARE data platform
+
+---
+
+# System Architecture
+
+The dashboard integrates **printer data and booking data** through a layered architecture.
+
+```
+Peppi Booking API
+        |
+        v
+bookingAdapter.ts
+        |
+        v
+React Dashboard State
+        |
+        v
+Visualization UI
+```
+
+### Future Architecture (with Telemetry)
+
+The future system will combine **printer telemetry and booking compliance monitoring**.
+
+```
+Bambu Printer MQTT
+        |
+        v
+Node / FIWARE Bridge
+        |
+        v
+React Dashboard
+        |
+        v
+Booking Compliance Engine
+```
+
+---
+
+# Project Structure
+
+```
 printer-lab-dashboard/
+│
 ├── public/
 │   └── index.html
+│
 ├── src/
+│
 │   ├── components/
 │   │   ├── common/
-│   │   │   ├── Logo.tsx          # Reusable FIELDLAB logo
-│   │   │   └── StatusBadge.tsx   # Status indicator component
+│   │   │   ├── Logo.tsx
+│   │   │   └── StatusBadge.tsx
+│   │   │
 │   │   ├── layout/
-│   │   │   └── Navbar.tsx        # Navigation bar
+│   │   │   └── Navbar.tsx
+│   │   │
 │   │   └── printer/
-│   │       └── PrinterCard.tsx   # Printer card component
+│   │       └── PrinterCard.tsx
+│
 │   ├── views/
-│   │   ├── FleetView.tsx         # Main dashboard
-│   │   ├── PrinterDetailView.tsx # Single printer details
-│   │   ├── AlertsView.tsx        # Alert history
-│   │   └── VisualizationView.tsx # Large display mode
-│   ├── hooks/
-│   │   └── usePrinters.ts        # Live data simulation hook
+│   │   ├── FleetView.tsx
+│   │   ├── PrinterDetailView.tsx
+│   │   ├── AlertsView.tsx
+│   │   └── BookingVizView.tsx
+│
 │   ├── data/
-│   │   ├── mockPrinters.ts       # Mock printer data (Bambu A1-A5)
-│   │   └── mockAlerts.ts         # Mock alert data
-│   ├── types/
-│   │   └── index.ts              # TypeScript interfaces
+│   │   ├── peppiApi.ts
+│   │   ├── mockPrinters.ts
+│   │   ├── mockBookings.ts
+│   │   └── mockAlerts.ts
+│
 │   ├── utils/
-│   │   ├── constants.ts          # App constants
-│   │   └── formatters.ts         # Data formatters
-│   ├── App.tsx                   # Main application
-│   └── index.tsx                 # Entry point
-├── tailwind.config.js            # Tailwind configuration
+│   │   └── bookingAdapter.ts
+│
+│   ├── types/
+│   │   └── index.ts
+│
+│   ├── hooks/
+│   │   └── usePrinters.ts
+│
+│   ├── App.tsx
+│   └── index.tsx
+│
+├── tailwind.config.js
 └── package.json
 ```
 
-## 🚀 Getting Started
+---
 
-### Prerequisites
-- **Node.js 16+**
-- **npm or yarn**
+# Getting Started
 
-### Installation
+## Prerequisites
 
-1. **Clone or create the project**
-   ```bash
-   npx create-react-app printer-lab-dashboard --template typescript
-   cd printer-lab-dashboard
-   ```
-2. **Install core dependencies**
-    ```bash
-    npm install
-    ```
-3. **Install additional UI packages**
-    ```bash
-    npm install recharts lucide-react
-    npm install -D tailwindcss postcss autoprefixer
-    npx tailwindcss init -p
-    ```
-## 🛠️ Configuration
-1. **Configure Tailwind**
-**Update your tailwind.config.js with the custom lab theme:**
+- Node.js **16+**
+- npm or yarn
+
+---
+
+# Installation
+
+Create the project:
 
 ```bash
+npx create-react-app printer-lab-dashboard --template typescript
+cd printer-lab-dashboard
+```
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Install UI libraries:
+
+```bash
+npm install recharts lucide-react
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+```
+
+---
+
+# Tailwind Configuration
+
+Update `tailwind.config.js`
+
+```javascript
 module.exports = {
   content: ["./src/**/*.{js,jsx,ts,tsx}"],
   theme: {
@@ -119,109 +273,124 @@ module.exports = {
 }
 ```
 
+Add Tailwind directives in `src/index.css`
 
-2. **Add Tailwind Directives**
-**Add the following to the top of your src/index.css:**
-
-```bash
+```css
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 ```
-## 💻 Usage
-3. **Development Server**
+
+---
+
+# Running the Application
+
+Start development server:
+
 ```bash
 npm start
 ```
-View the app at
-```bash
-http://localhost:3000.
+
+Open:
+
+```
+http://localhost:3000
 ```
 
-### Navigation Guide
-
-| Page | Description | Access |
-| :--- | :--- | :--- |
-| **Dashboard** | Fleet overview with all 5 printers | Click "Dashboard" in nav |
-| **Printer Detail** | Individual printer telemetry | Click any printer card |
-| **Alerts** | Error history and warnings | Click "Alerts" in nav |
-| **Display Mode** | Large visualization for wall screens | Click "Display" in nav |
-
-### Display Mode (Wall Mount)
-The Display page is optimized for 24/7 monitoring on large screens:
-- **Auto-updating** charts and statistics.
-- **High Contrast** text readable from 10+ feet away.
-- **Full-Screen** experience (hidden navbar).
-
 ---
-### Navigation Guide
 
-| Page | Description | Access |
-| :--- | :--- | :--- |
-| **Dashboard** | Fleet overview with all 5 printers | Click "Dashboard" in nav |
-| **Printer Detail** | Individual printer telemetry | Click any printer card |
-| **Alerts** | Error history and warnings | Click "Alerts" in nav |
-| **Display Mode** | Large visualization for wall screens | Click "Display" in nav |
+# Dashboard Navigation
 
-### Display Mode (Wall Mount)
-The Display page is optimized for 24/7 monitoring on large screens:
-- **Auto-updating** charts and statistics.
-- **High Contrast** text readable from 10+ feet away.
-- **Full-Screen** experience (hidden navbar).
+| Page | Description |
+|-----|-------------|
+Dashboard | Fleet overview of all printers |
+Printer Detail | Individual printer telemetry |
+Alerts | Error and alert history |
+Booking Visualization | Booking compliance dashboard |
+Display Mode | Large screen visualization |
 
 ---
 
-### ⚙️ Customization
+# Booking System Integration
 
-#### Change Printer Names
-Edit `src/data/mockPrinters.ts`:
+The dashboard currently integrates with **Peppi booking data**.
+
+Example API endpoint:
+
+```
+GET /api/peppi
+```
+
+Expected booking fields:
+
+```
+bookingId
+printerId
+userName
+startTime
+endTime
+status
+```
+
+The booking adapter maps this data into the dashboard printer model.
+
+---
+
+# Customization
+
+## Change Printer Names
+
+Edit:
+
+```
+src/data/mockPrinters.ts
+```
+
+Example:
+
 ```typescript
-export const INITIAL_PRINTERS: PrinterData[] = [
-  { id: 'p1', name: 'Bambu-X1-Carbon', ... },
-];
-```
-
-
-#### Change Printer Names
-Edit `src/data/mockPrinters.ts`:
-```typescript
-export const INITIAL_PRINTERS: PrinterData[] = [
-  { id: 'p1', name: 'Bambu-X1-Carbon', ... },
-];
-```
-
-#### Connect Real Data
-Replace the simulation logic in `src/hooks/usePrinters.ts` with your API:
-```typescript
-// Example:
-const response = await fetch('https://your-api-endpoint.com/printers');
-const data = await response.json();
-setPrinters(data);
+export const INITIAL_PRINTERS = [
+  { id: "p1", name: "Bambu A1" },
+  { id: "p2", name: "Bambu A2" },
+  { id: "p3", name: "Bambu A3" },
+  { id: "p4", name: "Bambu A4" },
+  { id: "p5", name: "Bambu A5" }
+]
 ```
 
 ---
 
-### ⚠️ Troubleshooting
+# Troubleshooting
 
-| Issue | Solution |
-| :--- | :--- |
-| `react-scripts` not found | Run `npm install` |
-| Module not found | Delete `node_modules` and `npm install` |
-| Port 3000 in use | `PORT=3001 npm start` |
-| Charts not rendering | Ensure `recharts` is installed via npm |
-
----
-
-### 🔮 Future Enhancements
-- [ ] WebSocket integration for real-time telemetry.
-- [ ] Dark mode toggle.
-- [ ] Material inventory tracking.
-- [ ] Print time estimation AI.
-- [ ] Real data integration.
+| Problem | Solution |
+|--------|---------|
+react-scripts not found | Run `npm install`
+Modules missing | Delete `node_modules` and reinstall
+Port already in use | `PORT=3001 npm start`
+Charts not rendering | Ensure `recharts` installed
 
 ---
 
-### 📄 License
-MIT License - Feel free to use and modify for your lab.
+# Future Enhancements
 
-**Credits:** Design inspired by FIELDLAB 3D signs. Built with Tailwind CSS and Recharts.
+Planned improvements include:
+
+- MQTT integration with Bambu printers
+- Unauthorized usage detection
+- Real-time telemetry streaming
+- FIWARE data platform integration
+- Material inventory tracking
+- Predictive print time estimation
+- Dark mode UI
+
+---
+
+# License
+
+MIT License
+
+---
+
+# Acknowledgment
+
+Developed for **FIELDLAB 3D Printing Environment** to support monitoring, analytics, and operational efficiency in shared fabrication laboratories.

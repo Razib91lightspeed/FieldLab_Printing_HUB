@@ -10,6 +10,7 @@ interface Props {
   onBack: () => void;
 }
 
+
 // TODO: Replace with actual Tuni.booking API call
 const toDate = (s: string) =>
   new Date(s.includes("T") ? s : s.replace(" ", "T"));
