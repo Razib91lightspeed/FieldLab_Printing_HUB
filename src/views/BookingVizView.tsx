@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { PrinterBookingStatus, BookingStatus } from '../types';
-import { MOCK_PRINTER_BOOKING_STATUS } from '../data/mockBookings';
+import { fetchPeppiBookings } from '../data/peppiApi';
+import { mapPeppiToPrinters } from '../utils/bookingAdapter';
 import { Logo } from '../components/common/Logo';
 import { CheckCircle2, XCircle, AlertCircle, Calendar, User, Clock, BookOpen } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -10,10 +11,84 @@ interface Props {
 }
 
 // TODO: Replace with actual Tuni.booking API call
+const toDate = (s: string) =>
+  new Date(s.includes("T") ? s : s.replace(" ", "T"));
+
+const clamp = (n: number, min = 0, max = 100) =>
+  Math.min(max, Math.max(min, n));
+
+const calcUtilizationNow = (startStr: string, endStr: string) => {
+
+  const now = new Date().getTime();
+  const start = toDate(startStr).getTime();
+  const end = toDate(endStr).getTime();
+
+  if (!start || !end || end <= start) return 0;
+
+  const pct = ((now - start) / (end - start)) * 100;
+
+  return Math.round(clamp(pct));
+};
+
+const extractUserName = (desc?: string) => {
+
+  if (!desc) return "User";
+
+  const teacherMatch = desc.match(/Teacher:\s*([A-Za-zÅÄÖåäö\s]+)/i);
+  if (teacherMatch) return teacherMatch[1].trim();
+
+  const nameMatch = desc.match(/,\s*([A-Za-zÅÄÖåäö\s]+)/);
+  if (nameMatch) return nameMatch[1].trim();
+
+  return "User";
+};
+
 const fetchBookingData = async (): Promise<PrinterBookingStatus[]> => {
-  // Simulating API delay
-  await new Promise(resolve => setTimeout(resolve, 500));
-  return MOCK_PRINTER_BOOKING_STATUS;
+
+  const peppiBookings = await fetchPeppiBookings();
+
+  const printers = mapPeppiToPrinters(peppiBookings);
+
+  return printers.map((p) => {
+
+    const hasBooking = !!p.currentBooking;
+
+    return {
+
+      printerId: p.printerId,
+      printerName: p.printerName,
+
+      // future MQTT integration
+     isPrinting: hasBooking,
+
+    hasBooking,
+
+    bookingStatus: hasBooking ? "with-booking" : "idle",
+
+    utilizationRate: hasBooking
+      ? calcUtilizationNow(
+          p.currentBooking!.start,
+          p.currentBooking!.end
+        )
+      : 0,
+
+      currentBooking: hasBooking
+        ? {
+            bookingId: p.currentBooking!.id,
+            printerId: p.printerId,
+            status: "active",
+
+            userName: extractUserName(p.currentBooking!.description),
+            purpose: p.currentBooking!.title,
+
+            startTime: p.currentBooking!.start,
+            endTime: p.currentBooking!.end,
+          }
+        : undefined,
+    };
+
+  });
+
 };
 
 const StatusCard: React.FC<{ 

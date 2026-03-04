@@ -8,63 +8,50 @@ export interface PrinterBookingInfo {
 }
 
 const PRINTER_MAP = [
-  { id: "p1", name: "Bambu A1", peppi: "3D tulostin_F0-16, Bambu A1" },
-  { id: "p2", name: "Bambu A2", peppi: "3D tulostin_F0-16, Bambu A2" },
-  { id: "p3", name: "Bambu A3", peppi: "3D tulostin_F0-16, Bambu A3" },
-  { id: "p4", name: "Bambu A4", peppi: "3D tulostin_F0-16, Bambu A4" },
-  { id: "p5", name: "Bambu A5", peppi: "3D tulostin_F0-16, Bambu A5 AMS" }
+  { id: "p1", name: "Bambu A1" },
+  { id: "p2", name: "Bambu A2" },
+  { id: "p3", name: "Bambu A3" },
+  { id: "p4", name: "Bambu A4" },
+  { id: "p5", name: "Bambu A5" }
 ];
 
+/*
+--------------------------------------------------
+MAP PEPPI BOOKINGS → PRINTER STATUS
+--------------------------------------------------
+Detect which printer has an ACTIVE booking now
+--------------------------------------------------
+*/
 
-// -----------------------------
-// FIXED DATE PARSER
-// -----------------------------
-function parsePeppiDate(str: string): Date {
-
-  if (!str) return new Date(0);
-
-  // Example: 02.03.2026 11.45
-  const [datePart, timePart] = str.split(" ");
-
-  const [day, month, year] = datePart.split(".");
-  const [hour, minute] = timePart.split(".");
-
-  return new Date(
-    Number(year),
-    Number(month) - 1,
-    Number(day),
-    Number(hour),
-    Number(minute)
-  );
-}
-
-
-// -----------------------------
-// MAIN MAPPER
-// -----------------------------
 export function mapPeppiToPrinters(
   bookings: PeppiBooking[]
 ): PrinterBookingInfo[] {
 
   const now = new Date();
 
-  console.log("NOW:", now);
+  console.log("CURRENT TIME:", now);
 
   return PRINTER_MAP.map(printer => {
 
-    const active = bookings.find(b => {
+    const activeBooking = bookings.find(b => {
 
-      if (!b.resourceIds?.includes(printer.peppi)) return false;
+      if (!b.resourceIds) return false;
 
-      const start = parsePeppiDate(b.start);
-      const end = parsePeppiDate(b.end);
+      // match printer name
+      const matchesPrinter = b.resourceIds.some(r =>
+        r.includes(printer.name)
+      );
+
+      if (!matchesPrinter) return false;
+
+      const start = new Date(b.start);
+      const end = new Date(b.end);
 
       const isActive = now >= start && now <= end;
 
       console.log(
-        "CHECK:",
+        "CHECK",
         printer.name,
-        "NOW:", now,
         "START:", start,
         "END:", end,
         "ACTIVE:", isActive
@@ -73,13 +60,13 @@ export function mapPeppiToPrinters(
       return isActive;
     });
 
-    console.log("PRINTER:", printer.name, "ACTIVE:", !!active);
+    console.log("PRINTER", printer.name, "ACTIVE:", !!activeBooking);
 
     return {
       printerId: printer.id,
       printerName: printer.name,
-      hasActiveBooking: !!active,
-      currentBooking: active
+      hasActiveBooking: !!activeBooking,
+      currentBooking: activeBooking
     };
   });
 }

@@ -2,6 +2,8 @@ import React from 'react';
 import { ChevronLeft, History } from 'lucide-react';
 import { MOCK_ALERTS } from '../data/mockAlerts';
 
+
+
 interface Props {
   onBack: () => void;
 }
