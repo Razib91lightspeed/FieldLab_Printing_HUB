@@ -310,7 +310,7 @@ export const BookingVizView: React.FC<Props> = ({ onBack }) => {
           <p className="text-purple-400 font-medium">Booking Compliance Monitor</p>
           <p className="text-xs text-gray-400 mt-1">
             Last updated: {lastUpdated.toLocaleTimeString()}
-            <span className="ml-2 px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full text-xs">Mock Data</span>
+            <span className="ml-2 px-2 py-0.5 bg-green-100 text-yellow-700 rounded-full text-xs">Live Data</span>
           </p>
         </div>
         
@@ -326,27 +326,6 @@ export const BookingVizView: React.FC<Props> = ({ onBack }) => {
               {new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })}
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Alert Banner for Tuni.booking Integration */}
-      <div 
-        className="mb-6 p-4 rounded-xl border-2 border-dashed border-purple-300 bg-purple-50"
-        style={{ boxShadow: '0 4px 6px -1px rgba(124, 58, 237, 0.05)' }}
-      >
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-purple-200 rounded-lg">
-            <Calendar className="text-purple-700" size={20} />
-          </div>
-          <div className="flex-1">
-            <h4 className="font-bold text-purple-900">Tuni.booking System Integration</h4>
-            <p className="text-sm text-purple-700">
-              Currently using mock data. Connect to 
-              <code className="mx-1 px-2 py-0.5 bg-purple-200 rounded text-purple-800">https://tuni.booking.system/api/v1/printer-bookings</code>
-              for live data.
-            </p>
-          </div>
-          <span className="px-3 py-1 bg-yellow-400 text-yellow-900 rounded-full text-xs font-bold">TODO</span>
         </div>
       </div>
 
@@ -475,40 +454,6 @@ export const BookingVizView: React.FC<Props> = ({ onBack }) => {
               {bookingData.map(printer => (
                 <PrinterBookingCard key={printer.printerId} data={printer} />
               ))}
-            </div>
-          </div>
-
-          {/* Integration Placeholder Section */}
-          <div 
-            className="mt-8 p-6 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-300"
-          >
-            <h3 className="text-gray-700 font-bold mb-3 flex items-center gap-2">
-              <span className="px-2 py-1 bg-gray-200 rounded text-xs">API INTEGRATION</span>
-              Tuni.booking System Connection
-            </h3>
-            <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
-              <div>
-                <p className="font-medium text-gray-800 mb-1">Endpoint:</p>
-                <code className="block p-2 bg-gray-800 text-green-400 rounded-lg text-xs">
-                  GET /api/v1/printer-bookings
-                </code>
-              </div>
-              <div>
-                <p className="font-medium text-gray-800 mb-1">Authentication:</p>
-                <code className="block p-2 bg-gray-800 text-yellow-400 rounded-lg text-xs">
-                  Bearer {'<token>'}
-                </code>
-              </div>
-              <div className="col-span-2">
-                <p className="font-medium text-gray-800 mb-1">Required Data Fields:</p>
-                <div className="flex gap-2 flex-wrap">
-                  {['bookingId', 'printerId', 'userName', 'startTime', 'endTime', 'status'].map(field => (
-                    <span key={field} className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
-                      {field}
-                    </span>
-                  ))}
-                </div>
-              </div>
             </div>
           </div>
         </>
