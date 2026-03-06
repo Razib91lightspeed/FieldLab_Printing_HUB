@@ -19,6 +19,7 @@ export interface PrinterData {
   material: string;
   color: string;
   alerts: number;
+  ip: string;
 }
 
 export interface AlertItem {

@@ -25,7 +25,7 @@ export const PrinterDetailView: React.FC<Props> = ({ printer, onBack }) => {
           <div className="flex items-center gap-3 mt-2">
             <StatusBadge status={printer.status} />
             <span className="text-lab-subtext">•</span>
-            <span className="text-lab-subtext">IP: 192.168.1.{10 + parseInt(printer.id.slice(1))}</span>
+            <span className="text-lab-subtext">IP: {printer.ip}</span>
           </div>
         </div>
         <div className="flex gap-3">
