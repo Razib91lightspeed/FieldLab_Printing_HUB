@@ -7,19 +7,28 @@ export type BookingStatus = 'with-booking' | 'without-booking' | 'idle';
 export interface PrinterData {
   id: string;
   name: string;
+  ip: string;
+
   status: PrinterStatus;
-  jobName: string;
   progress: number;
+
+  jobName: string;
   timeRemaining: string;
   elapsedTime: string;
+
   nozzleTemp: number;
   nozzleTarget: number;
+
   bedTemp: number;
   bedTarget: number;
+
   material: string;
   color: string;
+
   alerts: number;
-  ip: string;
+
+  hasBooking?: boolean;
+  bookingTitle?: string | null;
 }
 
 export interface AlertItem {
@@ -32,7 +41,6 @@ export interface AlertItem {
   status: 'active' | 'resolved' | 'pending';
 }
 
-// Booking system interface (placeholder for Tuni.booking integration)
 export interface BookingInfo {
   bookingId: string;
   printerId: string;
@@ -51,5 +59,5 @@ export interface PrinterBookingStatus {
   bookingStatus: BookingStatus;
   currentBooking?: BookingInfo;
   lastBooking?: BookingInfo;
-  utilizationRate: number; // percentage of time with valid booking
+  utilizationRate: number;
 }

@@ -6,49 +6,51 @@ import { AlertsView } from './views/AlertsView';
 import { VisualizationView } from './views/VisualizationView';
 import { BookingVizView } from './views/BookingVizView';
 import { usePrinters } from './hooks/usePrinters';
-import { ViewType } from './types';
+import { ViewType, PrinterData } from './types';
 
 function App() {
   const [view, setView] = useState<ViewType>('fleet');
-  const [selectedPrinterId, setSelectedPrinterId] = useState<string | null>(null);
+  const [selectedPrinter, setSelectedPrinter] = useState<PrinterData | null>(null);
   const { printers } = usePrinters();
-
-  const selectedPrinter = printers.find(p => p.id === selectedPrinterId);
 
   const showNavbar = view !== 'visualization' && view !== 'booking';
 
   return (
     <div className="min-h-screen bg-lab-bg font-sans text-lab-text">
       {showNavbar && <Navbar currentView={view} onViewChange={setView} />}
-      
+
       <main>
         {view === 'fleet' && (
-          <FleetView 
-            printers={printers} 
-            onSelectPrinter={(id) => {
-              setSelectedPrinterId(id);
+          <FleetView
+            printers={printers}
+            onSelectPrinter={(printer: PrinterData) => {
+              setSelectedPrinter(printer);
               setView('detail');
             }}
             onViewAlerts={() => setView('alerts')}
           />
         )}
+
         {view === 'detail' && selectedPrinter && (
-          <PrinterDetailView 
+          <PrinterDetailView
             printer={selectedPrinter}
             onBack={() => setView('fleet')}
           />
         )}
+
         {view === 'alerts' && (
           <AlertsView onBack={() => setView('fleet')} />
         )}
+
         {view === 'visualization' && (
-          <VisualizationView 
+          <VisualizationView
             printers={printers}
             onBack={() => setView('fleet')}
           />
         )}
+
         {view === 'booking' && (
-          <BookingVizView 
+          <BookingVizView
             onBack={() => setView('fleet')}
           />
         )}

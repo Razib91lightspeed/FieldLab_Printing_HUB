@@ -2,13 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { PrinterCard } from '../components/printer/PrinterCard';
 
-import { fetchPeppiBookings } from '../data/peppiApi';
+import { fetchDashboard } from '../api/dashboard';
 import { PrinterData } from '../types';
 import { mapPeppiToPrinters } from '../utils/bookingAdapter';
+import { mapDashboardData } from '../utils/mapDashboardData';
 
 interface Props {
   printers: PrinterData[];
-  onSelectPrinter: (id: string) => void;
+  onSelectPrinter: (printer: PrinterData) => void;
   onViewAlerts: () => void;
 }
 
@@ -17,82 +18,52 @@ export const FleetView: React.FC<Props> = ({
   onSelectPrinter,
   onViewAlerts
 }) => {
+  const [livePrinters, setLivePrinters] = useState<PrinterData[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [livePrinters, setLivePrinters] = useState<PrinterData[]>(printers);
-
-  // Load Peppi once + refresh every 60s
   useEffect(() => {
+    loadDashboard();
 
-    loadPeppi();
-
-    const interval = setInterval(loadPeppi, 60000);
+    const interval = setInterval(loadDashboard, 5000);
 
     return () => clearInterval(interval);
+  }, []);
 
-  }, [printers]);
-
-
-  const loadPeppi = async () => {
-
+  const loadDashboard = async () => {
     try {
+      const data = await fetchDashboard();
 
-      console.log("🔵 Loading Peppi bookings...");
+      const mappedPrinters: PrinterData[] = mapDashboardData(data.printers || []);
+      const bookingInfo = mapPeppiToPrinters(data.bookings || []);
 
-      const bookings = await fetchPeppiBookings();
-
-      console.log("🟢 Raw Peppi data:", bookings);
-
-      const bookingInfo = mapPeppiToPrinters(bookings);
-
-      console.table(
-        bookingInfo.map(x => ({
-          printer: x.printerName,
-          hasActiveBooking: x.hasActiveBooking,
-          start: x.currentBooking?.start,
-          end: x.currentBooking?.end,
-          title: x.currentBooking?.title
-        }))
-      );
-
-      // Merge booking info with telemetry (mock/MQTT)
-      const merged: PrinterData[] = printers.map(p => {
-
-        const b = bookingInfo.find(x => x.printerId === p.id);
+      const merged: PrinterData[] = mappedPrinters.map((p) => {
+        const b = bookingInfo.find(
+          x => x.printerName === p.name || x.printerId === p.id
+        );
 
         if (!b) return p;
 
         return {
           ...p,
-
-          // booking fields
           hasBooking: b.hasActiveBooking,
           bookingTitle: b.currentBooking?.title || null
-
         };
       });
 
-      console.log("🟡 Final merged printers:", merged);
-
       setLivePrinters(merged);
-
+      setLoading(false);
     } catch (err) {
-
-      console.error("❌ Peppi load failed", err);
-
+      console.error("Dashboard load failed", err);
+      setLoading(false);
     }
   };
-
 
   const activeCount =
     livePrinters.filter(p => p.status === 'printing').length;
 
-
   return (
     <div className="p-6 max-w-7xl mx-auto animate-fade-in">
-
-      {/* HEADER */}
       <header className="mb-8 flex justify-between items-center">
-
         <div>
           <h1 className="text-3xl font-bold text-lab-text">
             Lab Overview
@@ -104,7 +75,6 @@ export const FleetView: React.FC<Props> = ({
         </div>
 
         <div className="flex gap-4">
-
           <button
             onClick={onViewAlerts}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-lab-secondary text-lab-primary rounded-lg shadow-sm hover:bg-lab-accent transition-colors"
@@ -121,26 +91,22 @@ export const FleetView: React.FC<Props> = ({
               Active Jobs
             </div>
           </div>
-
         </div>
       </header>
 
-
-      {/* PRINTER GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-
-        {livePrinters.map((printer) => (
-
-          <PrinterCard
-            key={printer.id}
-            printer={printer}
-            onClick={() => onSelectPrinter(printer.id)}
-          />
-
-        ))}
-
-      </div>
-
+      {loading ? (
+        <div className="text-lab-subtext">Loading printers...</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {livePrinters.map((printer) => (
+            <PrinterCard
+              key={printer.id}
+              printer={printer}
+              onClick={() => onSelectPrinter(printer)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 };

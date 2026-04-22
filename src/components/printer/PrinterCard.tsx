@@ -62,8 +62,16 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
           </div>
           <div className="flex items-center gap-2 text-sm text-lab-subtext">
             <Zap size={16} />
-            <span>{printer.material}</span>
-          </div>
+            <span
+              className={
+                printer.material === 'Please refill PLA'
+                  ? 'text-red-500 font-semibold'
+                  : ''
+                }
+                > 
+                {printer.material}
+                </span>
+                </div>
         </div>
       </div>
     </div>
