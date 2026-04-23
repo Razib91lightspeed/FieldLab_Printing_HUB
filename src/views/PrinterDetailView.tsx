@@ -11,37 +11,16 @@ import {
 } from 'lucide-react';
 import { PrinterData } from '../types';
 import { StatusBadge } from '../components/common/StatusBadge';
+import { normalizeColorCode, getColorLabel } from '../utils/colorName';
 
 interface Props {
   printer: PrinterData;
   onBack: () => void;
 }
 
-function normalizeColorCode(color: string): string | null {
-  if (!color || color === 'Unknown') return null;
-
-  const cleaned = color.trim().replace('#', '');
-
-  // Bambu-style 8-char value, use last 6 chars as RGB
-  if (/^[0-9A-Fa-f]{8}$/.test(cleaned)) {
-    return `#${cleaned.slice(2, 8)}`;
-  }
-
-  // Standard 6-char hex
-  if (/^[0-9A-Fa-f]{6}$/.test(cleaned)) {
-    return `#${cleaned}`;
-  }
-
-  // Short 3-char hex
-  if (/^[0-9A-Fa-f]{3}$/.test(cleaned)) {
-    return `#${cleaned}`;
-  }
-
-  return null;
-}
-
 export const PrinterDetailView: React.FC<Props> = ({ printer, onBack }) => {
   const displayColor = normalizeColorCode(printer.color);
+  const colorLabel = getColorLabel(printer.color);
 
   return (
     <div className="p-6 max-w-5xl mx-auto animate-fade-in">
@@ -174,18 +153,23 @@ export const PrinterDetailView: React.FC<Props> = ({ printer, onBack }) => {
 
             <div className="flex items-center gap-4">
               <div
-                className="w-12 h-12 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-xs text-gray-500 bg-gray-50"
-                style={displayColor ? { backgroundColor: displayColor } : {}}
-                title={printer.color}
-              >
-                {!displayColor ? '?' : ''}
-              </div>
+                className="w-12 h-12 rounded-full border border-gray-300 shadow-sm"
+                style={{
+                  backgroundColor: displayColor || '#f3f4f6'
+                }}
+                title={displayColor || 'Unknown'}
+              />
 
               <div>
                 <div className="font-bold text-lab-text">{printer.material}</div>
                 <div className="text-sm text-lab-subtext">
-                  Color: {displayColor ? printer.color : 'Unknown'}
+                  Color: {colorLabel}
                 </div>
+                {displayColor && (
+                  <div className="text-xs text-gray-400 mt-1">
+                    {displayColor}
+                  </div>
+                )}
               </div>
             </div>
           </div>

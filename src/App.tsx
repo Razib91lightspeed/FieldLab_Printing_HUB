@@ -5,6 +5,7 @@ import { PrinterDetailView } from './views/PrinterDetailView';
 import { AlertsView } from './views/AlertsView';
 import { VisualizationView } from './views/VisualizationView';
 import { BookingVizView } from './views/BookingVizView';
+import { SettingsView } from './views/SettingsView';
 import { usePrinters } from './hooks/usePrinters';
 import { ViewType, PrinterData } from './types';
 
@@ -51,6 +52,12 @@ function App() {
 
         {view === 'booking' && (
           <BookingVizView
+            onBack={() => setView('fleet')}
+          />
+        )}
+
+        {view === 'settings' && (
+          <SettingsView
             onBack={() => setView('fleet')}
           />
         )}

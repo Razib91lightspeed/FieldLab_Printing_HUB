@@ -1,7 +1,5 @@
 export type PrinterStatus = 'printing' | 'idle' | 'error' | 'finished';
-
-export type ViewType = 'fleet' | 'detail' | 'alerts' | 'visualization' | 'booking';
-
+export type ViewType = 'fleet' | 'detail' | 'alerts' | 'visualization' | 'booking' | 'settings';
 export type BookingStatus = 'with-booking' | 'without-booking' | 'idle';
 
 export interface PrinterData {
@@ -27,6 +25,8 @@ export interface PrinterData {
 
   alerts: number;
 
+  
+  bookingWarning?: string | null;
   hasBooking?: boolean;
   bookingTitle?: string | null;
 }

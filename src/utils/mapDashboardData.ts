@@ -37,10 +37,11 @@ function normalizeStatus(status?: string): PrinterStatus {
   return "idle";
 }
 
-function inferAlerts(status?: string, material?: string): number {
+function inferAlerts(status?: string): number {
   const s = (status || "").toUpperCase();
+
   if (s === "PAUSE" || s === "FAILED") return 1;
-  if (material === "Please refill PLA") return 1;
+
   return 0;
 }
 
@@ -57,10 +58,26 @@ function inferTimeRemaining(status?: string, progress?: number): string {
   return `~${remaining} min`;
 }
 
+function normalizeMaterial(raw?: string): string {
+  const value = (raw || "").trim();
+
+  if (!value) return "Material status unavailable";
+
+  // These are warning phrases, not actual material names.
+  if (
+    value.toLowerCase() === "please refill pla" ||
+    value.toLowerCase() === "refill pla"
+  ) {
+    return "Material status unavailable";
+  }
+
+  return value;
+}
+
 export function mapDashboardData(printers: FiwarePrinter[]): PrinterData[] {
   return printers.map((p) => {
     const meta = PRINTER_META[p.id] || { ip: "-" };
-    const material = p.material?.value || "-";
+    const material = normalizeMaterial(p.material?.value);
 
     return {
       id: p.id,
@@ -83,7 +100,7 @@ export function mapDashboardData(printers: FiwarePrinter[]): PrinterData[] {
       material,
       color: p.color?.value || "Unknown",
 
-      alerts: inferAlerts(p.status?.value, material),
+      alerts: inferAlerts(p.status?.value),
 
       hasBooking: false,
       bookingTitle: null,

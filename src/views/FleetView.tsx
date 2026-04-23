@@ -37,23 +37,31 @@ export const FleetView: React.FC<Props> = ({
       const bookingInfo = mapPeppiToPrinters(data.bookings || []);
 
       const merged: PrinterData[] = mappedPrinters.map((p) => {
-        const b = bookingInfo.find(
+        const booking = bookingInfo.find(
           x => x.printerName === p.name || x.printerId === p.id
         );
 
-        if (!b) return p;
+        const hasBooking = !!booking?.hasActiveBooking;
+        const isPrinting = p.status === 'printing';
+
+        const bookingWarning =
+          isPrinting && !hasBooking
+            ? 'Printing without Pakki booking'
+            : null;
 
         return {
           ...p,
-          hasBooking: b.hasActiveBooking,
-          bookingTitle: b.currentBooking?.title || null
+          hasBooking,
+          bookingTitle: booking?.currentBooking?.title || null,
+          bookingWarning,
+          alerts: bookingWarning ? Math.max(p.alerts, 1) : p.alerts
         };
       });
 
       setLivePrinters(merged);
       setLoading(false);
     } catch (err) {
-      console.error("Dashboard load failed", err);
+      console.error('Dashboard load failed', err);
       setLoading(false);
     }
   };
