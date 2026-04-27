@@ -4,7 +4,9 @@ export interface PrinterBookingInfo {
   printerId: string;
   printerName: string;
   hasActiveBooking: boolean;
+  hasBookingToday: boolean;
   currentBooking?: PeppiBooking;
+  todaysBookings: PeppiBooking[];
 }
 
 const PRINTER_MAP = [
@@ -15,58 +17,86 @@ const PRINTER_MAP = [
   { id: "p5", name: "Bambu A5" }
 ];
 
+function normalizeText(value: string | undefined | null): string {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function bookingText(booking: PeppiBooking): string {
+  return normalizeText(
+    [
+      booking.title,
+      booking.description,
+      ...(booking.resourceIds || [])
+    ].join(" ")
+  );
+}
+
+function bookingBelongsToPrinter(
+  booking: PeppiBooking,
+  printerName: string
+): boolean {
+  const printer = normalizeText(printerName);
+  const text = bookingText(booking);
+
+  /**
+   * Peppi resource can be:
+   * "3D tulostin_F0-16, Bambu A1"
+   * "3D tulostin_F0-16, Bambu A5 AMS"
+   *
+   * UI printer can be:
+   * "Bambu A1"
+   * "Bambu A5"
+   */
+  return text.includes(printer);
+}
+
+function isBookingActiveNow(booking: PeppiBooking, now: Date): boolean {
+  const start = new Date(booking.start);
+  const end = new Date(booking.end);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return false;
+  }
+
+  return now >= start && now <= end;
+}
+
 /*
 --------------------------------------------------
 MAP PEPPI BOOKINGS → PRINTER STATUS
 --------------------------------------------------
-Detect which printer has an ACTIVE booking now
+hasBookingToday    = printer has any booking today
+hasActiveBooking   = booking is active right now
+currentBooking     = the active booking right now
+todaysBookings     = all today's bookings for this printer
 --------------------------------------------------
 */
 
 export function mapPeppiToPrinters(
   bookings: PeppiBooking[]
 ): PrinterBookingInfo[] {
-
   const now = new Date();
 
-  console.log("CURRENT TIME:", now);
+  return PRINTER_MAP.map((printer) => {
+    const printerBookings = bookings.filter((booking) =>
+      bookingBelongsToPrinter(booking, printer.name)
+    );
 
-  return PRINTER_MAP.map(printer => {
-
-    const activeBooking = bookings.find(b => {
-
-      if (!b.resourceIds) return false;
-
-      // match printer name
-      const matchesPrinter = b.resourceIds.some(r =>
-        r.includes(printer.name)
-      );
-
-      if (!matchesPrinter) return false;
-
-      const start = new Date(b.start);
-      const end = new Date(b.end);
-
-      const isActive = now >= start && now <= end;
-
-      console.log(
-        "CHECK",
-        printer.name,
-        "START:", start,
-        "END:", end,
-        "ACTIVE:", isActive
-      );
-
-      return isActive;
-    });
-
-    console.log("PRINTER", printer.name, "ACTIVE:", !!activeBooking);
+    const activeBooking = printerBookings.find((booking) =>
+      isBookingActiveNow(booking, now)
+    );
 
     return {
       printerId: printer.id,
       printerName: printer.name,
       hasActiveBooking: !!activeBooking,
-      currentBooking: activeBooking
+      hasBookingToday: printerBookings.length > 0,
+      currentBooking: activeBooking,
+      todaysBookings: printerBookings
     };
   });
 }

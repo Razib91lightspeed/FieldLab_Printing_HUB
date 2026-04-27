@@ -1,9 +1,14 @@
+const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:4000";
+
 export async function fetchDashboard() {
-  const res = await fetch("http://localhost:4000/api/dashboard");
+  const res = await fetch(`${API_BASE}/api/dashboard`);
+  const data = await res.json().catch(() => null);
 
   if (!res.ok) {
-    throw new Error(`Dashboard API failed: ${res.status}`);
+    throw new Error(
+      data?.details || data?.error || `Dashboard API failed: ${res.status}`
+    );
   }
 
-  return await res.json();
+  return data;
 }

@@ -6,12 +6,24 @@ export interface PeppiBooking {
   end: string;
   description?: string;
 }
-// calling data directly from Peppi system 
-const API_URL = "http://localhost:4000/api/peppi";
 
-/**
- * Check if booking is today
- */
+interface PeppiApiResponse {
+  ok?: boolean;
+  source?: "live" | "cache" | "none";
+  updated_at?: string;
+  days_ahead?: number;
+  bookings?: PeppiBooking[];
+  printers?: string[];
+  warning?: string | null;
+  error?: string;
+  details?: string;
+}
+
+const PEPPI_API_BASE =
+  process.env.REACT_APP_PEPPI_API_BASE || "http://localhost:5050";
+
+const API_URL = `${PEPPI_API_BASE}/api/peppi`;
+
 function isToday(start: string): boolean {
   const bookingDate = new Date(start);
   const now = new Date();
@@ -23,33 +35,63 @@ function isToday(start: string): boolean {
   );
 }
 
-/**
- * Fetch bookings from backend proxy (today only)
- */
 export async function fetchPeppiBookings(): Promise<PeppiBooking[]> {
-
   try {
     const response = await fetch(API_URL);
+    const data: PeppiApiResponse | PeppiBooking[] = await response
+      .json()
+      .catch(() => null);
 
     if (!response.ok) {
-      throw new Error(`Peppi API error: ${response.status}`);
+      throw new Error(
+        !Array.isArray(data)
+          ? data?.details || data?.error || `Peppi API error: ${response.status}`
+          : `Peppi API error: ${response.status}`
+      );
     }
 
-    const data: PeppiBooking[] = await response.json();
+    /**
+     * Supports both formats:
+     * 1. Old format: [booking, booking, booking]
+     * 2. New backend format: { ok: true, bookings: [...] }
+     */
+    const bookings: PeppiBooking[] = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.bookings)
+      ? data.bookings
+      : [];
 
-    console.log("✅ Peppi bookings received:", data);
-
-    // ✅ FILTER ONLY TODAY BOOKINGS
-    const todayBookings = data.filter(b => isToday(b.start));
-
-    console.log("📅 Today bookings:", todayBookings);
-
-    return todayBookings;
-
+    return bookings.filter((booking) => isToday(booking.start));
   } catch (error) {
+    console.error("Failed to fetch Peppi bookings:", error);
+    return [];
+  }
+}
 
-    console.error("❌ Failed to fetch Peppi bookings:", error);
+export async function fetchAllPeppiBookings(): Promise<PeppiBooking[]> {
+  try {
+    const response = await fetch(API_URL);
+    const data: PeppiApiResponse | PeppiBooking[] = await response
+      .json()
+      .catch(() => null);
 
+    if (!response.ok) {
+      throw new Error(
+        !Array.isArray(data)
+          ? data?.details || data?.error || `Peppi API error: ${response.status}`
+          : `Peppi API error: ${response.status}`
+      );
+    }
+
+    const bookings: PeppiBooking[] = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.bookings)
+      ? data.bookings
+      : [];
+
+    return bookings;
+  } catch (error) {
+    console.error("Failed to fetch all Peppi bookings:", error);
     return [];
   }
 }

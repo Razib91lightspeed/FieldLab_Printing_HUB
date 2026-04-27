@@ -1,0 +1,15 @@
+{
+  "name": "peppi_backend",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "PORT=5050 node index.js",
+    "dev": "PORT=5050 node index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "node-fetch": "^3.3.2"
+  }
+}
