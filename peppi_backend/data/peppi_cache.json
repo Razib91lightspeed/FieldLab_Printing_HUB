@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-04-27T15:19:24.562Z",
+  "updated_at": "2026-04-29T13:04:29.831Z",
   "source": "peppi",
   "ok": true,
   "days_ahead": 7,
@@ -12,84 +12,14 @@
   ],
   "bookings": [
     {
-      "id": "2197509",
-      "resourceIds": [
-        "3D tulostin_F0-16, Bambu A4"
-      ],
-      "title": "Mechatronics advanced",
-      "description": "Aika: 09:30-15:00",
-      "end": "2026-04-27 15:00:00",
-      "start": "2026-04-27 09:30:00"
-    },
-    {
-      "id": "2197418",
-      "resourceIds": [
-        "3D tulostin_F0-16, Bambu A3"
-      ],
-      "title": "Mechatronics advanced",
-      "description": "Aika: 09:30-10:45",
-      "end": "2026-04-27 10:45:00",
-      "start": "2026-04-27 09:30:00"
-    },
-    {
-      "id": "2197394",
+      "id": "2200355",
       "resourceIds": [
         "3D tulostin_F0-16, Bambu A2"
       ],
-      "title": "Mechatronics advanced",
-      "description": "Aika: 09:30-14:30",
-      "end": "2026-04-27 14:30:00",
-      "start": "2026-04-27 09:30:00"
-    },
-    {
-      "id": "2197434",
-      "resourceIds": [
-        "3D tulostin_F0-16, Bambu A5 AMS"
-      ],
-      "title": "Mechatronics advanced",
-      "description": "Aika: 09:35-11:30<br>Lisätiedot: Tuudo-tilanvaraus",
-      "end": "2026-04-27 11:30:00",
-      "start": "2026-04-27 09:35:58"
-    },
-    {
-      "id": "2197886",
-      "resourceIds": [
-        "3D tulostin_F0-16, Bambu A3"
-      ],
-      "title": "IRMA ROOBOTTI",
-      "description": "Aika: 11:30-15:30<br>Lisätiedot: Mekatroniikka Ville Jouppila 0451066484",
-      "end": "2026-04-27 15:30:00",
-      "start": "2026-04-27 11:30:00"
-    },
-    {
-      "id": "2197928",
-      "resourceIds": [
-        "3D tulostin_F0-16, Bambu A5 AMS"
-      ],
-      "title": "Advanced mexchatronics tulostusta",
-      "description": "Aika: 11:30-16:00<br>Lisätiedot: Advanced mechatronics +358445442000",
-      "end": "2026-04-27 16:00:00",
-      "start": "2026-04-27 11:30:00"
-    },
-    {
-      "id": "2196711",
-      "resourceIds": [
-        "3D tulostin_F0-16, Bambu A1"
-      ],
-      "title": "Mechatronics Advanced 5K00DL05-3005 Projekti",
-      "description": "Aika: 14:30-21:00",
-      "end": "2026-04-27 21:00:00",
-      "start": "2026-04-27 14:30:00"
-    },
-    {
-      "id": "2198859",
-      "resourceIds": [
-        "3D tulostin_F0-16, Bambu A5 AMS"
-      ],
-      "title": "Mechatronics Advanced 5K00DL05-3005",
-      "description": "Aika: 17:00-19:00<br>Lisätiedot: flipperi roboon vast ope: ville jouppila",
-      "end": "2026-04-27 19:00:00",
-      "start": "2026-04-27 17:00:00"
+      "title": "Tulostus",
+      "description": "Aika: 09:30-12:30",
+      "end": "2026-04-30 12:30:00",
+      "start": "2026-04-30 09:30:00"
     }
   ]
 }

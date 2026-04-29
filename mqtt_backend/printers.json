@@ -1,0 +1,61 @@
+{
+  "last_updated": "2026-04-24T00:20:00.932568",
+  "fiware_endpoint": "http://172.16.101.172:1026/ngsi-ld/v1/entities",
+  "printers": [
+    {
+      "id": "p1",
+      "name": "Bambu A1",
+      "ip": "10.10.3.1",
+      "access_code": "73e8f9bf",
+      "serial": "00M09A3C0600831",
+      "enabled": true,
+      "is_pipeline_healthy": true,
+      "last_seen": "2026-04-24T00:20:00.375052",
+      "last_updated": "2026-04-23T15:48:30.693Z"
+    },
+    {
+      "id": "p2",
+      "name": "Bambu A2",
+      "ip": "10.10.3.2",
+      "access_code": "fb7d432f",
+      "serial": "00M09A3C0600792",
+      "enabled": true,
+      "is_pipeline_healthy": true,
+      "last_seen": "2026-04-24T00:20:00.472250",
+      "last_updated": "2026-04-23T21:18:56.162Z"
+    },
+    {
+      "id": "p3",
+      "name": "Bambu A3",
+      "ip": "10.10.3.3",
+      "access_code": "0949f801",
+      "serial": "00M09A3C0600564",
+      "enabled": true,
+      "is_pipeline_healthy": true,
+      "last_seen": "2026-04-24T00:20:00.375639",
+      "last_updated": "2026-04-23T21:17:21.478Z"
+    },
+    {
+      "id": "p4",
+      "name": "Bambu A4",
+      "ip": "10.10.3.4",
+      "access_code": "b52543ff",
+      "serial": "00M09A3B2200015",
+      "enabled": true,
+      "is_pipeline_healthy": true,
+      "last_seen": "2026-04-24T00:19:59.876667",
+      "last_updated": "2026-04-23T21:16:49.276Z"
+    },
+    {
+      "id": "p5",
+      "name": "Bambu A5",
+      "ip": "10.10.3.5",
+      "access_code": "62a21b21",
+      "serial": "00M09A3C0400854",
+      "enabled": true,
+      "is_pipeline_healthy": true,
+      "last_seen": "2026-04-24T00:20:00.908216",
+      "last_updated": "2026-04-23T13:33:11.130Z"
+    }
+  ]
+}
