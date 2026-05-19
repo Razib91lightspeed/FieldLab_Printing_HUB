@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-04-29T13:04:29.831Z",
+  "updated_at": "2026-05-10T20:21:07.475Z",
   "source": "peppi",
   "ok": true,
   "days_ahead": 7,
@@ -10,16 +10,5 @@
     "3D tulostin_F0-16, Bambu A4",
     "3D tulostin_F0-16, Bambu A5 AMS"
   ],
-  "bookings": [
-    {
-      "id": "2200355",
-      "resourceIds": [
-        "3D tulostin_F0-16, Bambu A2"
-      ],
-      "title": "Tulostus",
-      "description": "Aika: 09:30-12:30",
-      "end": "2026-04-30 12:30:00",
-      "start": "2026-04-30 09:30:00"
-    }
-  ]
+  "bookings": []
 }

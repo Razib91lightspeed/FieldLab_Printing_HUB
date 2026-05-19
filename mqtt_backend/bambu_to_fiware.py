@@ -1,146 +1,322 @@
-import time
-import requests
-from config import FIWARE
-
-BASE_URL = FIWARE["orion_ld_url"]
-LINK_HEADER = FIWARE["context_link"]
-
-
-def _headers():
-    return {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Link": LINK_HEADER,
-        "fiware-service": FIWARE["service"],
-        "fiware-servicepath": FIWARE["servicepath"],
-    }
+import json
+import threading
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
 
 
-def _entity_id(printer_name: str) -> str:
-    safe_name = printer_name.replace(" ", "_")
+ORION_BASE_URL = "http://172.16.101.172:1026/ngsi-ld/v1"
+PRINTERS_FILE = Path("/home/fieldlab/Desktop/bambu-fiware/printers.json")
+
+FIWARE_SERVICE = "openiot"
+FIWARE_SERVICEPATH = "/"
+
+NGSI_CONTEXT = "https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context.jsonld"
+
+_file_lock = threading.Lock()
+
+
+def now_iso():
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def printer_entity_id(printer_name: str) -> str:
+    safe_name = printer_name.strip().replace(" ", "_")
     return f"urn:ngsi-ld:Printer:{safe_name}"
 
 
-def _full_entity(entity_id: str):
+def headers(content_type="application/ld+json"):
+    return {
+        "Content-Type": content_type,
+        "Accept": "application/ld+json",
+        "fiware-service": FIWARE_SERVICE,
+        "fiware-servicepath": FIWARE_SERVICEPATH,
+    }
+
+
+def make_property(value, observed_at=None):
+    prop = {
+        "type": "Property",
+        "value": value,
+    }
+
+    if observed_at:
+        prop["observedAt"] = observed_at
+
+    return prop
+
+
+def normalize_number(value, default=0):
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def normalize_int(value, default=0):
+    try:
+        if value is None:
+            return default
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def normalize_string(value, default="Unknown"):
+    if value is None:
+        return default
+
+    text = str(value).strip()
+    return text if text else default
+
+
+def build_attrs(
+    printer_name,
+    progress,
+    status,
+    job_name,
+    nozzle_temp,
+    bed_temp,
+    material,
+    color,
+):
+    observed_at = now_iso()
+
+    return {
+        "name": make_property(printer_name, observed_at),
+        "progress": make_property(normalize_int(progress), observed_at),
+        "status": make_property(normalize_string(status), observed_at),
+        "jobName": make_property(normalize_string(job_name, "-"), observed_at),
+        "nozzleTemp": make_property(normalize_number(nozzle_temp), observed_at),
+        "bedTemp": make_property(normalize_number(bed_temp), observed_at),
+        "material": make_property(normalize_string(material), observed_at),
+        "color": make_property(normalize_string(color), observed_at),
+        "online": make_property(True, observed_at),
+        "lastSeen": make_property(observed_at, observed_at),
+        "@context": [NGSI_CONTEXT],
+    }
+
+
+def build_entity(
+    printer_name,
+    progress,
+    status,
+    job_name,
+    nozzle_temp,
+    bed_temp,
+    material,
+    color,
+):
+    entity_id = printer_entity_id(printer_name)
+
+    attrs = build_attrs(
+        printer_name,
+        progress,
+        status,
+        job_name,
+        nozzle_temp,
+        bed_temp,
+        material,
+        color,
+    )
+
     return {
         "id": entity_id,
         "type": "Printer",
-        "progress": {"type": "Property", "value": 0},
-        "status": {"type": "Property", "value": "Unknown"},
-        "jobName": {"type": "Property", "value": ""},
-        "nozzleTemp": {"type": "Property", "value": 0},
-        "bedTemp": {"type": "Property", "value": 0},
-        "material": {"type": "Property", "value": "-"},
-        "color": {"type": "Property", "value": "Unknown"},
-        "lastSeen": {
-            "type": "Property",
-            "value": time.strftime("%Y-%m-%dT%H:%M:%S")
-        },
-        "online": {
-            "type": "Property",
-            "value": True
-        }
+        **attrs,
     }
 
 
-def ensure_entity_exists(printer_name: str):
-    entity_id = _entity_id(printer_name)
-    url = f"{BASE_URL}/entities/{entity_id}"
+def http_request(method, url, payload=None):
+    data = None
+
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+
+    req = urllib.request.Request(
+        url=url,
+        data=data,
+        method=method,
+        headers=headers(),
+    )
 
     try:
-        r = requests.get(url, headers=_headers(), timeout=5)
+        with urllib.request.urlopen(req, timeout=8) as response:
+            body = response.read().decode("utf-8", errors="replace")
+            return response.status, body
 
-        if r.status_code == 200:
-            return entity_id
+    except urllib.error.HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        return error.code, body
 
-        if r.status_code == 404:
-            print(f"[FIWARE] Creating entity for {printer_name}")
-            create_url = f"{BASE_URL}/entities"
-
-            r = requests.post(
-                create_url,
-                headers=_headers(),
-                json=_full_entity(entity_id),
-                timeout=5
-            )
-
-            if r.status_code in (201, 204):
-                print(f"[FIWARE] Created entity for {printer_name}")
-            else:
-                print(f"[FIWARE] Create failed: {r.status_code} {r.text}")
-
-        else:
-            print(f"[FIWARE] GET error: {r.status_code} {r.text}")
-
-    except Exception as e:
-        print(f"[FIWARE] ensure_entity_exists error: {e}")
-
-    return entity_id
+    except Exception as error:
+        return 0, str(error)
 
 
-def delete_entity(entity_id: str):
-    url = f"{BASE_URL}/entities/{entity_id}"
+def create_printer_entity(
+    printer_name,
+    progress,
+    status,
+    job_name,
+    nozzle_temp,
+    bed_temp,
+    material,
+    color,
+):
+    entity = build_entity(
+        printer_name,
+        progress,
+        status,
+        job_name,
+        nozzle_temp,
+        bed_temp,
+        material,
+        color,
+    )
+
+    url = f"{ORION_BASE_URL}/entities"
+    status_code, body = http_request("POST", url, entity)
+
+    if status_code in (200, 201, 204):
+        print(f"[FIWARE] Created {printer_name}")
+        return True
+
+    if status_code == 409:
+        print(f"[FIWARE] Entity already exists for {printer_name}; retrying update")
+        return False
+
+    print(f"[FIWARE] Create failed for {printer_name}: {status_code} {body}")
+    return False
+
+
+def patch_printer_entity(
+    printer_name,
+    progress,
+    status,
+    job_name,
+    nozzle_temp,
+    bed_temp,
+    material,
+    color,
+):
+    entity_id = printer_entity_id(printer_name)
+    encoded_id = urllib.parse.quote(entity_id, safe="")
+
+    attrs = build_attrs(
+        printer_name,
+        progress,
+        status,
+        job_name,
+        nozzle_temp,
+        bed_temp,
+        material,
+        color,
+    )
+
+    url = f"{ORION_BASE_URL}/entities/{encoded_id}/attrs"
+    status_code, body = http_request("PATCH", url, attrs)
+
+    if status_code in (200, 201, 204):
+        print(f"[FIWARE] Updated {printer_name}")
+        return True
+
+    if status_code == 404:
+        print(f"[FIWARE] Entity missing for {printer_name}; creating it now")
+        created = create_printer_entity(
+            printer_name,
+            progress,
+            status,
+            job_name,
+            nozzle_temp,
+            bed_temp,
+            material,
+            color,
+        )
+
+        if created:
+            return True
+
+        retry_status_code, retry_body = http_request("PATCH", url, attrs)
+
+        if retry_status_code in (200, 201, 204):
+            print(f"[FIWARE] Updated {printer_name} after create retry")
+            return True
+
+        print(
+            f"[FIWARE] Update retry failed for {printer_name}: "
+            f"{retry_status_code} {retry_body}"
+        )
+        return False
+
+    print(f"[FIWARE] Update failed for {printer_name}: {status_code} {body}")
+    return False
+
+
+def update_local_health(printer_name, success):
+    """
+    Keep the local printers.json health fields aligned with the bridge result.
+    Access codes are preserved. Only health timestamps are touched.
+    """
     try:
-        requests.delete(url, headers=_headers(), timeout=5)
-        print(f"[FIWARE] Deleted entity {entity_id}")
-    except Exception as e:
-        print(f"[FIWARE] Delete failed: {e}")
+        if not PRINTERS_FILE.exists():
+            return
+
+        with _file_lock:
+            with PRINTERS_FILE.open("r", encoding="utf-8") as file:
+                config = json.load(file)
+
+            changed = False
+            timestamp = now_iso()
+
+            for printer in config.get("printers", []):
+                if printer.get("name") == printer_name:
+                    printer["is_pipeline_healthy"] = bool(success)
+
+                    if success:
+                        printer["last_seen"] = timestamp
+
+                    changed = True
+                    break
+
+            if not changed:
+                return
+
+            tmp_path = PRINTERS_FILE.with_suffix(".json.tmp")
+
+            with tmp_path.open("w", encoding="utf-8") as file:
+                json.dump(config, file, indent=2)
+
+            tmp_path.replace(PRINTERS_FILE)
+
+    except Exception as error:
+        print(f"[LOCAL CONFIG] Failed to update health for {printer_name}: {error}")
 
 
 def update_printer(
-    printer_name: str,
-    progress: int,
-    status: str,
-    job_name: str,
-    nozzle_temp: float,
-    bed_temp: float,
-    material: str,
-    color: str
+    printer_name,
+    progress,
+    status,
+    job_name,
+    nozzle_temp,
+    bed_temp,
+    material,
+    color,
 ):
-    entity_id = _entity_id(printer_name)
-    url = f"{BASE_URL}/entities/{entity_id}/attrs"
+    success = patch_printer_entity(
+        printer_name,
+        progress,
+        status,
+        job_name,
+        nozzle_temp,
+        bed_temp,
+        material,
+        color,
+    )
 
-    payload = {
-        "progress": {"type": "Property", "value": progress},
-        "status": {"type": "Property", "value": status},
-        "jobName": {"type": "Property", "value": job_name},
-        "nozzleTemp": {"type": "Property", "value": nozzle_temp},
-        "bedTemp": {"type": "Property", "value": bed_temp},
-        "material": {"type": "Property", "value": material},
-        "color": {"type": "Property", "value": color},
-        "lastSeen": {
-            "type": "Property",
-            "value": time.strftime("%Y-%m-%dT%H:%M:%S")
-        },
-        "online": {
-            "type": "Property",
-            "value": True
-        }
-    }
+    update_local_health(printer_name, success)
 
-    try:
-        r = requests.patch(url, headers=_headers(), json=payload, timeout=5)
-
-        if r.status_code == 204:
-            print(f"[FIWARE] Updated {printer_name}")
-            return
-
-        if r.status_code == 207:
-            print(f"[FIWARE] Fixing schema for {printer_name}")
-
-            delete_entity(entity_id)
-            ensure_entity_exists(printer_name)
-
-            r2 = requests.patch(url, headers=_headers(), json=payload, timeout=5)
-
-            if r2.status_code == 204:
-                print(f"[FIWARE] Fixed + Updated {printer_name}")
-            else:
-                print(f"[FIWARE] Retry failed: {r2.status_code} {r2.text}")
-
-            return
-
-        print(f"[FIWARE] Update failed: {r.status_code} {r.text}")
-
-    except Exception as e:
-        print(f"[FIWARE] Exception updating {printer_name}: {e}")
+    return success

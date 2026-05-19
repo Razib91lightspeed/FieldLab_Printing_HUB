@@ -1,4 +1,5 @@
-const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:4000";
+const API_BASE =
+  process.env.REACT_APP_API_BASE_URL || "http://10.10.1.54:4000";
 
 export async function fetchDashboard() {
   const res = await fetch(`${API_BASE}/api/dashboard`);

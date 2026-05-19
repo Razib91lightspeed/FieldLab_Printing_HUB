@@ -517,29 +517,45 @@ app.get("/api/printers", async (_req, res) => {
    ========================================================= */
 
 app.get("/api/dashboard", async (_req, res) => {
-  const fiwareResult = await fetchFiwarePrintersSafe();
-  const peppiResult = await fetchPeppiBookingsSafe();
+  try {
+    const config = await readPrintersFile();
+    const fiwareResult = await fetchFiwarePrintersSafe();
 
-  if (fiwareResult.error && fiwareResult.data.length === 0) {
+    if (fiwareResult.error && fiwareResult.data.length === 0) {
+      return res.status(500).json({
+        ok: false,
+        error: "Dashboard printer request failed",
+        details: {
+          printersError: fiwareResult.error,
+        },
+        configPrinters: config.printers || [],
+      });
+    }
+
+    return res.json({
+      ok: true,
+
+      // Live FIWARE data
+      printers: fiwareResult.data,
+
+      // Always-known local printer list from Pi
+      configPrinters: config.printers || [],
+
+      configLastUpdated: config.last_updated,
+
+      warnings: {
+        printersError: fiwareResult.error,
+      },
+    });
+  } catch (err) {
+    console.error("GET /api/dashboard failed:", err);
+
     return res.status(500).json({
       ok: false,
       error: "Dashboard request failed",
-      details: {
-        printersError: fiwareResult.error,
-        bookingsError: peppiResult.error,
-      },
+      details: err.message,
     });
   }
-
-  return res.json({
-    ok: true,
-    printers: fiwareResult.data,
-    bookings: peppiResult.data,
-    warnings: {
-      printersError: fiwareResult.error,
-      bookingsError: peppiResult.error,
-    },
-  });
 });
 
 /* =========================================================
