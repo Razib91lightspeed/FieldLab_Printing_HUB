@@ -1,27 +1,111 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { PrinterData } from '../types';
-import { INITIAL_PRINTERS } from '../data/mockPrinters';
+
+const FALLBACK_PRINTERS: PrinterData[] = [
+  {
+    id: 'p1',
+    name: 'Bambu A1',
+    ip: '10.10.3.1',
+    status: 'idle',
+    progress: 0,
+    jobName: 'Waiting for live data',
+    timeRemaining: '-',
+    elapsedTime: '-',
+    nozzleTemp: 0,
+    nozzleTarget: 0,
+    bedTemp: 0,
+    bedTarget: 0,
+    material: 'Unknown',
+    color: 'Unknown',
+    alerts: 0,
+    hasBooking: false,
+    bookingTitle: null,
+    bookingWarning: null,
+  },
+  {
+    id: 'p2',
+    name: 'Bambu A2',
+    ip: '10.10.3.2',
+    status: 'idle',
+    progress: 0,
+    jobName: 'Waiting for live data',
+    timeRemaining: '-',
+    elapsedTime: '-',
+    nozzleTemp: 0,
+    nozzleTarget: 0,
+    bedTemp: 0,
+    bedTarget: 0,
+    material: 'Unknown',
+    color: 'Unknown',
+    alerts: 0,
+    hasBooking: false,
+    bookingTitle: null,
+    bookingWarning: null,
+  },
+  {
+    id: 'p3',
+    name: 'Bambu A3',
+    ip: '10.10.3.3',
+    status: 'idle',
+    progress: 0,
+    jobName: 'Waiting for live data',
+    timeRemaining: '-',
+    elapsedTime: '-',
+    nozzleTemp: 0,
+    nozzleTarget: 0,
+    bedTemp: 0,
+    bedTarget: 0,
+    material: 'Unknown',
+    color: 'Unknown',
+    alerts: 0,
+    hasBooking: false,
+    bookingTitle: null,
+    bookingWarning: null,
+  },
+  {
+    id: 'p4',
+    name: 'Bambu A4',
+    ip: '10.10.3.4',
+    status: 'idle',
+    progress: 0,
+    jobName: 'Waiting for live data',
+    timeRemaining: '-',
+    elapsedTime: '-',
+    nozzleTemp: 0,
+    nozzleTarget: 0,
+    bedTemp: 0,
+    bedTarget: 0,
+    material: 'Unknown',
+    color: 'Unknown',
+    alerts: 0,
+    hasBooking: false,
+    bookingTitle: null,
+    bookingWarning: null,
+  },
+  {
+    id: 'p5',
+    name: 'Bambu A5',
+    ip: '10.10.3.5',
+    status: 'idle',
+    progress: 0,
+    jobName: 'Waiting for live data',
+    timeRemaining: '-',
+    elapsedTime: '-',
+    nozzleTemp: 0,
+    nozzleTarget: 0,
+    bedTemp: 0,
+    bedTarget: 0,
+    material: 'Unknown',
+    color: 'Unknown',
+    alerts: 0,
+    hasBooking: false,
+    bookingTitle: null,
+    bookingWarning: null,
+  },
+];
 
 export const usePrinters = () => {
-  const [printers, setPrinters] = useState<PrinterData[]>(INITIAL_PRINTERS);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setPrinters(current => 
-        current.map(p => {
-          if (p.status === 'printing') {
-            return { 
-              ...p, 
-              progress: Math.min(p.progress + 0.5, 99),
-              nozzleTemp: p.nozzleTemp + (Math.random() - 0.5)
-            };
-          }
-          return p;
-        })
-      );
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
+  const [printers, setPrinters] = useState<PrinterData[]>(FALLBACK_PRINTERS);
 
   return { printers, setPrinters };
 };
