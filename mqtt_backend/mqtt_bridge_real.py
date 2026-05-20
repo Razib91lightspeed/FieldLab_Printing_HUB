@@ -1,328 +1,858 @@
-import ssl
 import json
-import time
+import signal
+import ssl
 import threading
+import time
+from pathlib import Path
+
 import paho.mqtt.client as mqtt
 
-from printer_loader import load_printers
-from bambu_to_fiware import update_printer
+from bambu_to_fiware import update_local_health, update_printer
 
 
-def first_non_empty_string(*values):
-    for value in values:
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return None
+PRINTERS_FILE = Path("/home/fieldlab/Desktop/bambu-fiware/printers.json")
+MATERIAL_CACHE_FILE = Path("/home/fieldlab/Desktop/bambu-fiware/material_cache.json")
+
+MQTT_PORT = 8883
+MQTT_USERNAME = "bblp"
+
+MIN_FIWARE_UPDATE_INTERVAL_SECONDS = 1
+CONFIG_RECHECK_SECONDS = 2
+CONNECT_RETRY_SECONDS = 3
+
+_stop_event = threading.Event()
 
 
-def parse_int_like(value):
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        value = value.strip()
-        if value.isdigit():
+def now_seconds():
+    return time.time()
+
+
+def read_config():
+    with PRINTERS_FILE.open("r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+def load_enabled_printers():
+    try:
+        config = read_config()
+    except Exception as error:
+        print(f"[CONFIG] Failed to read {PRINTERS_FILE}: {error}")
+        return []
+
+    printers = []
+
+    for printer in config.get("printers", []):
+        if not printer.get("enabled", True):
+            continue
+
+        name = str(printer.get("name", "")).strip()
+        ip = str(printer.get("ip", "")).strip()
+        access_code = str(printer.get("access_code", "")).strip()
+        serial = str(printer.get("serial", "")).strip()
+
+        if not name or not ip or not access_code or not serial:
+            print(f"[CONFIG] Skipping incomplete printer config: {printer}")
+            continue
+
+        printers.append(
+            {
+                "id": str(printer.get("id", "")).strip(),
+                "name": name,
+                "ip": ip,
+                "access_code": access_code,
+                "serial": serial,
+                "enabled": True,
+            }
+        )
+
+    return printers
+
+
+
+
+def load_material_cache():
+    try:
+        if not MATERIAL_CACHE_FILE.exists():
+            return {}
+        with MATERIAL_CACHE_FILE.open("r", encoding="utf-8") as file:
+            return json.load(file)
+    except Exception as error:
+        print(f"[CACHE] Failed to read material cache: {error}")
+        return {}
+
+
+def save_material_cache(cache):
+    try:
+        tmp_path = MATERIAL_CACHE_FILE.with_suffix(".json.tmp")
+        with tmp_path.open("w", encoding="utf-8") as file:
+            json.dump(cache, file, indent=2)
+        tmp_path.replace(MATERIAL_CACHE_FILE)
+    except Exception as error:
+        print(f"[CACHE] Failed to save material cache: {error}")
+
+
+def is_known_material(value):
+    text = str(value or "").strip().lower()
+    return bool(text) and text not in ["unknown", "-", "none", "null"]
+
+
+def is_known_color(value):
+    text = str(value or "").strip().upper()
+    return bool(text) and text not in ["#000000", "000000", "00000000", "-", "UNKNOWN", "NONE", "NULL"]
+
+
+def resolve_material_with_cache(printer_name, material, color):
+    cache = load_material_cache()
+    cached = cache.get(printer_name, {})
+
+    final_material = material
+    final_color = color
+
+    if is_known_material(material):
+        cached["material"] = material
+    elif is_known_material(cached.get("material")):
+        final_material = cached["material"]
+
+    if is_known_color(color):
+        cached["color"] = color
+    elif is_known_color(cached.get("color")):
+        final_color = cached["color"]
+
+    cache[printer_name] = cached
+    save_material_cache(cache)
+
+    return final_material, final_color
+
+
+def printer_signature(printer):
+    return (
+        printer.get("id"),
+        printer.get("name"),
+        printer.get("ip"),
+        printer.get("access_code"),
+        printer.get("serial"),
+        printer.get("enabled"),
+    )
+
+
+def get_reason_code_value(reason_code):
+    try:
+        return int(reason_code)
+    except Exception:
+        pass
+
+    value = getattr(reason_code, "value", None)
+    if value is not None:
+        try:
             return int(value)
-    return None
+        except Exception:
+            pass
+
+    return reason_code
 
 
-def normalize_rgba_hex(value):
+def mqtt_error_message(rc):
+    if rc == 0:
+        return "Connection accepted"
+    if rc == 1:
+        return "MQTT connect failed rc=1. Unacceptable protocol version."
+    if rc == 2:
+        return "MQTT connect failed rc=2. Identifier rejected."
+    if rc == 3:
+        return "MQTT connect failed rc=3. Server unavailable."
+    if rc == 4:
+        return "MQTT connect failed rc=4. Bad username or password."
+    if rc == 5:
+        return (
+            "MQTT connect failed rc=5. Not authorized. "
+            "Access code is probably wrong or LAN access is disabled."
+        )
+
+    return f"MQTT connect failed rc={rc}."
+
+
+def normalize_int(value, default=0):
+    try:
+        if value is None:
+            return default
+        return int(float(value))
+    except Exception:
+        return default
+
+
+def normalize_float(value, default=0):
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def normalize_text(value, default="Unknown"):
+    if value is None:
+        return default
+
+    text = str(value).strip()
+    return text if text else default
+
+
+def first_existing(data, keys, default=None):
+    for key in keys:
+        if key in data and data.get(key) is not None:
+            return data.get(key)
+    return default
+
+
+def clean_color(value):
+    if value is None:
+        return "#000000"
+
+    text = str(value).strip()
+
+    if not text:
+        return "#000000"
+
+    if text.startswith("#"):
+        text = text[1:]
+
+    text = text.upper()
+
+    if len(text) >= 6:
+        return f"#{text[:6]}"
+
+    return "#000000"
+
+
+def collect_ams_trays(ams_data):
+    trays = []
+
+    if not ams_data:
+        return trays
+
+    if isinstance(ams_data, dict):
+        possible_lists = []
+
+        if isinstance(ams_data.get("tray"), list):
+            possible_lists.append(ams_data.get("tray"))
+
+        if isinstance(ams_data.get("ams"), list):
+            possible_lists.append(ams_data.get("ams"))
+
+        for maybe_list in possible_lists:
+            for item in maybe_list:
+                if isinstance(item, dict):
+                    if isinstance(item.get("tray"), list):
+                        trays.extend(item.get("tray"))
+                    else:
+                        trays.append(item)
+
+    if isinstance(ams_data, list):
+        for item in ams_data:
+            if not isinstance(item, dict):
+                continue
+
+            if isinstance(item.get("tray"), list):
+                trays.extend(item.get("tray"))
+            else:
+                trays.append(item)
+
+    return [tray for tray in trays if isinstance(tray, dict)]
+
+
+def get_tray_id(tray):
+    return str(
+        first_existing(
+            tray,
+            [
+                "id",
+                "tray_id",
+                "tray_idx",
+                "index",
+                "slot",
+            ],
+            "",
+        )
+    ).strip()
+
+
+def get_active_tray_id(print_data):
+    tray_now = first_existing(print_data, ["tray_now", "trayNow"])
+    tray_tar = first_existing(print_data, ["tray_tar", "trayTar", "tray_target"])
+
+    for value in [tray_now, tray_tar]:
+        if value is None:
+            continue
+
+        text = str(value).strip()
+
+        if text and text not in ["-1", "254", "255"]:
+            return text
+
+    for value in [tray_now, tray_tar]:
+        if value is None:
+            continue
+
+        text = str(value).strip()
+
+        if text:
+            return text
+
+    return ""
+
+
+def extract_material_and_color(print_data):
     """
-    Convert Bambu RGBA hex to plain UI-friendly hex.
+    MQTT-only material/color resolver.
 
-    Examples:
-      F98C36FF -> #F98C36
-      161616FF -> #161616
-      FFFFFF   -> #FFFFFF
+    No hardcoded per-printer material.
+    No manual material_cache.json.
+    Source of truth is only the Bambu MQTT payload.
+
+    It tries, in order:
+    1. Direct print fields
+    2. Virtual tray fields, often used when there is no AMS
+    3. Active AMS tray if tray id is available
+    4. Any valid AMS tray
+    5. Recursive scan of MQTT payload for material/color-like fields
     """
-    if not isinstance(value, str):
-        return None
 
-    v = value.strip().lstrip("#").upper()
+    known_materials = [
+        "PLA",
+        "PLA+",
+        "PETG",
+        "ABS",
+        "ASA",
+        "TPU",
+        "PA",
+        "PC",
+        "PVA",
+        "BVOH",
+        "HIPS",
+        "NYLON",
+        "SUPPORT",
+    ]
 
-    if len(v) == 8:
-        return f"#{v[:6]}"
-
-    if len(v) == 6:
-        return f"#{v}"
-
-    return None
-
-
-def parse_active_tray_id(ams_data: dict):
-    if not isinstance(ams_data, dict):
-        return None
-
-    for key in ("tray_now", "tray_tar"):
-        parsed = parse_int_like(ams_data.get(key))
-        if parsed is not None:
-            return parsed
-
-    return None
-
-
-def find_active_tray(print_data: dict):
-    if not isinstance(print_data, dict):
-        return None
-
-    ams_data = print_data.get("ams", {})
-    active_tray_id = parse_active_tray_id(ams_data)
-
-    if active_tray_id is None:
-        return None
-
-    # AMS trays
-    if active_tray_id in (0, 1, 2, 3):
-        ams_units = ams_data.get("ams", [])
-        if not isinstance(ams_units, list):
+    def normalize_material(value):
+        if value is None:
             return None
 
-        for ams_unit in ams_units:
-            if not isinstance(ams_unit, dict):
-                continue
+        text = str(value).strip()
+        if not text:
+            return None
 
-            trays = ams_unit.get("tray", [])
-            if not isinstance(trays, list):
-                continue
+        upper = text.upper().replace(" ", "")
 
-            for tray in trays:
-                if not isinstance(tray, dict):
-                    continue
+        if upper in ["UNKNOWN", "NONE", "NULL", "-", ""]:
+            return None
 
-                tray_id = parse_int_like(tray.get("id"))
-                if tray_id == active_tray_id:
-                    return tray
+        for material in known_materials:
+            mat_upper = material.upper().replace(" ", "")
+            if upper == mat_upper or upper.startswith(mat_upper + "-"):
+                return material
 
-    # External / virtual tray
-    if active_tray_id in (254, 255):
-        vt_tray = print_data.get("vt_tray")
-        if isinstance(vt_tray, dict):
-            return vt_tray
+        # Some Bambu values can be descriptive, e.g. "Bambu PLA Basic"
+        for material in known_materials:
+            mat_upper = material.upper().replace(" ", "")
+            if mat_upper in upper:
+                return material
 
-        vir_slot = print_data.get("vir_slot")
-        if (
-            isinstance(vir_slot, list)
-            and len(vir_slot) > 0
-            and isinstance(vir_slot[0], dict)
-        ):
-            return vir_slot[0]
-
-    return None
-
-
-def extract_material_from_active_tray(print_data: dict):
-    tray = find_active_tray(print_data)
-    if not isinstance(tray, dict):
         return None
 
-    return first_non_empty_string(
-        tray.get("tray_type"),
-        tray.get("filament_type"),
-        tray.get("material"),
-        tray.get("type"),
-    )
+    def normalize_color(value):
+        if value is None:
+            return None
 
+        text = str(value).strip()
+        if not text:
+            return None
 
-def extract_color_from_active_tray(print_data: dict):
-    tray = find_active_tray(print_data)
-    if not isinstance(tray, dict):
+        if text.startswith("#"):
+            text = text[1:]
+
+        text = text.upper()
+
+        if text in ["UNKNOWN", "NONE", "NULL", "-", "000000", "00000000"]:
+            return None
+
+        if len(text) >= 6:
+            return f"#{text[:6]}"
+
         return None
 
-    raw_color = first_non_empty_string(
-        tray.get("tray_color"),
-        tray.get("color"),
-        tray.get("filament_color"),
-        tray.get("rgba"),
-        tray.get("tray_rgba"),
+    def material_from_object(obj):
+        if not isinstance(obj, dict):
+            return None
+
+        keys = [
+            "tray_type",
+            "trayType",
+            "filament_type",
+            "filamentType",
+            "filament_name",
+            "filamentName",
+            "material",
+            "type",
+        ]
+
+        for key in keys:
+            material = normalize_material(obj.get(key))
+            if material:
+                return material
+
+        return None
+
+    def color_from_object(obj):
+        if not isinstance(obj, dict):
+            return None
+
+        keys = [
+            "tray_color",
+            "trayColor",
+            "tray_rgba",
+            "trayRgba",
+            "filament_color",
+            "filamentColor",
+            "color",
+        ]
+
+        for key in keys:
+            color = normalize_color(obj.get(key))
+            if color:
+                return color
+
+        return None
+
+    def scan_payload_for_material_and_color(obj):
+        material_found = None
+        color_found = None
+
+        def walk(value, path=""):
+            nonlocal material_found, color_found
+
+            if material_found and color_found:
+                return
+
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    child_path = f"{path}.{key}".lower()
+
+                    if isinstance(child, (str, int, float)):
+                        if material_found is None and any(
+                            token in child_path
+                            for token in [
+                                "material",
+                                "filament",
+                                "tray_type",
+                                "traytype",
+                                "filament_type",
+                                "filamenttype",
+                            ]
+                        ):
+                            material = normalize_material(child)
+                            if material:
+                                material_found = material
+
+                        if color_found is None and any(
+                            token in child_path
+                            for token in [
+                                "color",
+                                "rgba",
+                            ]
+                        ):
+                            color = normalize_color(child)
+                            if color:
+                                color_found = color
+                    else:
+                        walk(child, child_path)
+
+            elif isinstance(value, list):
+                for index, child in enumerate(value):
+                    walk(child, f"{path}[{index}]")
+
+        walk(obj)
+        return material_found, color_found
+
+    material = None
+    color = None
+
+    # 1. Direct fields from print payload
+    material = material_from_object(print_data)
+    color = color_from_object(print_data)
+
+    # 2. Virtual tray, common when printer is not using AMS
+    vt_tray = (
+        print_data.get("vt_tray")
+        or print_data.get("vtTray")
+        or print_data.get("virtual_tray")
+        or print_data.get("virtualTray")
     )
 
-    if raw_color:
-        normalized = normalize_rgba_hex(raw_color)
-        if normalized:
-            return normalized
-
-    cols = tray.get("cols")
-    if isinstance(cols, list) and len(cols) > 0:
-        normalized = normalize_rgba_hex(cols[0])
-        if normalized:
-            return normalized
-
-    return None
-
-
-def extract_material_non_ams(print_data: dict):
-    return first_non_empty_string(
-        print_data.get("material"),
-        print_data.get("filament_type"),
-        print_data.get("filamentType"),
-        print_data.get("tray_type"),
-        print_data.get("filament_name"),
-        print_data.get("filament"),
-    )
-
-
-def extract_color_non_ams(print_data: dict):
-    raw_color = first_non_empty_string(
-        print_data.get("color"),
-        print_data.get("filament_color"),
-        print_data.get("tray_color"),
-        print_data.get("filamentColor"),
-    )
-
-    normalized = normalize_rgba_hex(raw_color)
-    if normalized:
-        return normalized
-
-    vt_tray = print_data.get("vt_tray")
     if isinstance(vt_tray, dict):
-        vt_color = normalize_rgba_hex(vt_tray.get("tray_color"))
-        if vt_color:
-            return vt_color
+        material = material or material_from_object(vt_tray)
+        color = color or color_from_object(vt_tray)
 
-    vir_slot = print_data.get("vir_slot")
-    if isinstance(vir_slot, list) and len(vir_slot) > 0 and isinstance(vir_slot[0], dict):
-        vir_color = normalize_rgba_hex(vir_slot[0].get("tray_color"))
-        if vir_color:
-            return vir_color
+    elif isinstance(vt_tray, list):
+        for tray in vt_tray:
+            if not isinstance(tray, dict):
+                continue
 
-    return None
+            material = material or material_from_object(tray)
+            color = color or color_from_object(tray)
+
+            if material and color:
+                break
+
+    # 3. AMS tray data
+    active_tray_id = get_active_tray_id(print_data)
+    trays = collect_ams_trays(print_data.get("ams"))
+
+    selected_tray = None
+
+    if active_tray_id:
+        for tray in trays:
+            if get_tray_id(tray) == active_tray_id:
+                selected_tray = tray
+                break
+
+    if selected_tray:
+        material = material or material_from_object(selected_tray)
+        color = color or color_from_object(selected_tray)
+
+    # 4. If no active tray id, use any tray that has valid material/color
+    if (not material or not color) and trays:
+        for tray in trays:
+            if not isinstance(tray, dict):
+                continue
+
+            material = material or material_from_object(tray)
+            color = color or color_from_object(tray)
+
+            if material and color:
+                break
+
+    # 5. Last MQTT-only fallback: recursively scan whole print payload
+    if not material or not color:
+        scanned_material, scanned_color = scan_payload_for_material_and_color(print_data)
+        material = material or scanned_material
+        color = color or scanned_color
+
+    final_material = material or "Unknown"
+    final_color = color or "#000000"
+
+    print(
+        "[DEBUG] Active tray -> "
+        f"tray_now={print_data.get('tray_now')} | "
+        f"tray_tar={print_data.get('tray_tar')} | "
+        f"id={active_tray_id or 'unknown'} | "
+        f"type={final_material} | "
+        f"color={final_color.replace('#', '')}"
+    )
+
+    return final_material, final_color
 
 
-def resolve_material(print_data: dict):
-    material = extract_material_from_active_tray(print_data)
-    if material:
-        return material
+def extract_print_fields(payload):
+    print_data = payload.get("print", payload)
 
-    material = extract_material_non_ams(print_data)
-    if material:
-        return material
+    if not isinstance(print_data, dict):
+        print_data = {}
 
-    return "Unknown"
-
-
-def resolve_color(print_data: dict):
-    color = extract_color_from_active_tray(print_data)
-    if color:
-        return color
-
-    color = extract_color_non_ams(print_data)
-    if color:
-        return color
-
-    return "Unknown"
-
-
-def debug_active_tray(print_data: dict):
-    ams_data = print_data.get("ams", {})
-    tray_now = ams_data.get("tray_now")
-    tray_tar = ams_data.get("tray_tar")
-
-    tray = find_active_tray(print_data)
-
-    if tray:
-        print(
-            "[DEBUG] Active tray -> "
-            f"tray_now={tray_now} | "
-            f"tray_tar={tray_tar} | "
-            f"id={tray.get('id')} | "
-            f"type={tray.get('tray_type')} | "
-            f"color={tray.get('tray_color')}"
+    progress = normalize_int(
+        first_existing(
+            print_data,
+            [
+                "mc_percent",
+                "progress",
+                "print_percent",
+                "printPercentage",
+                "percent",
+            ],
+            0,
         )
-    else:
-        print(
-            "[DEBUG] No active tray found | "
-            f"tray_now={tray_now} | "
-            f"tray_tar={tray_tar}"
+    )
+
+    status = normalize_text(
+        first_existing(
+            print_data,
+            [
+                "gcode_state",
+                "status",
+                "state",
+                "print_status",
+                "printStatus",
+            ],
+            "UNKNOWN",
+        ),
+        default="UNKNOWN",
+    )
+
+    job_name = normalize_text(
+        first_existing(
+            print_data,
+            [
+                "subtask_name",
+                "subtaskName",
+                "gcode_file",
+                "gcodeFile",
+                "project_name",
+                "projectName",
+                "job_name",
+                "jobName",
+                "file",
+            ],
+            "-",
+        ),
+        default="-",
+    )
+
+    nozzle_temp = normalize_float(
+        first_existing(
+            print_data,
+            [
+                "nozzle_temper",
+                "nozzleTemp",
+                "nozzle_temp",
+                " nozzle_temper",
+            ],
+            0,
         )
+    )
+
+    bed_temp = normalize_float(
+        first_existing(
+            print_data,
+            [
+                "bed_temper",
+                "bedTemp",
+                "bed_temp",
+            ],
+            0,
+        )
+    )
+
+    material, color = extract_material_and_color(print_data)
+
+    return {
+        "progress": progress,
+        "status": status,
+        "job_name": job_name,
+        "nozzle_temp": nozzle_temp,
+        "bed_temp": bed_temp,
+        "material": material,
+        "color": color,
+    }
 
 
-def create_client(printer):
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
+class PrinterMqttWorker:
+    def __init__(self, printer):
+        self.printer = printer
+        self.name = printer["name"]
+        self.ip = printer["ip"]
+        self.access_code = printer["access_code"]
+        self.serial = printer["serial"]
+        self.topic = f"device/{self.serial}/report"
 
-    client.username_pw_set("bblp", printer["access_code"])
-    client.tls_set(cert_reqs=ssl.CERT_NONE)
-    client.tls_insecure_set(True)
+        self.connected = False
+        self.last_fiware_update = 0
+        self.last_payload_signature = None
+        self.client = None
 
-    def on_connect(client, userdata, flags, rc):
+    def build_client(self):
+        client_id = f"fieldlab-{self.name.replace(' ', '-')}-{int(time.time())}"
+
+        client = mqtt.Client(client_id=client_id)
+        client.username_pw_set(MQTT_USERNAME, self.access_code)
+        client.tls_set(cert_reqs=ssl.CERT_NONE)
+        client.tls_insecure_set(True)
+
+        client.on_connect = self.on_connect
+        client.on_disconnect = self.on_disconnect
+        client.on_message = self.on_message
+
+        return client
+
+    def on_connect(self, client, userdata, flags, reason_code, *extra):
+        rc = get_reason_code_value(reason_code)
+
         if rc == 0:
-            print(f"[{printer['name']}] Connected successfully")
-            topic = f"device/{printer['serial']}/report"
-            client.subscribe(topic)
-            print(f"[{printer['name']}] Subscribed to {topic}")
-        else:
-            print(f"[{printer['name']}] MQTT connect failed rc={rc}")
-
-    def on_message(client, userdata, msg):
-        try:
-            data = json.loads(msg.payload.decode())
-            p = data.get("print", {})
-
-            progress = p.get("percent", 0)
-            status = p.get("gcode_state", "Unknown")
-            job_name = p.get("subtask_name", "None")
-            nozzle_temp = p.get("nozzle_temper", 0)
-            bed_temp = p.get("bed_temper", 0)
-
-            material = resolve_material(p)
-            color = resolve_color(p)
-
-            debug_active_tray(p)
-
-            print(
-                f"[{printer['name']}] {progress}% | {status} | "
-                f"Job: {job_name} | Material: {material} | Color: {color}"
+            self.connected = True
+            print(f"[{self.name}] MQTT connected")
+            update_local_health(
+                self.name,
+                False,
+                "MQTT connected. Waiting for first telemetry payload.",
             )
+            client.subscribe(self.topic)
+            print(f"[{self.name}] Subscribed to {self.topic}")
+            return
 
-            update_printer(
-                printer["name"],
-                progress,
-                status,
-                job_name,
-                nozzle_temp,
-                bed_temp,
-                material,
-                color,
-            )
+        self.connected = False
+        message = mqtt_error_message(rc)
+        print(f"[{self.name}] MQTT connect failed rc={rc}")
+        update_local_health(self.name, False, message)
 
-        except Exception as e:
-            print(f"[{printer['name']}] Error: {e}")
+    def on_disconnect(self, client, userdata, reason_code, *extra):
+        rc = get_reason_code_value(reason_code)
+        self.connected = False
 
-    client.on_connect = on_connect
-    client.on_message = on_message
+        if rc == 0:
+            print(f"[{self.name}] MQTT disconnected cleanly")
+            return
 
-    return client
+        message = f"MQTT disconnected unexpectedly rc={rc}"
+        print(f"[{self.name}] {message}")
+        update_local_health(self.name, False, message)
 
-
-def run_printer(printer):
-    while True:
+    def on_message(self, client, userdata, message):
         try:
-            print(f"Starting connection for {printer['name']}")
-            client = create_client(printer)
-            client.connect(printer["ip"], 8883, 60)
-            client.loop_forever()
+            payload_text = message.payload.decode("utf-8", errors="replace")
+            payload = json.loads(payload_text)
+        except Exception as error:
+            error_message = f"Invalid MQTT payload: {error}"
+            print(f"[{self.name}] {error_message}")
+            update_local_health(self.name, False, error_message)
+            return
 
-        except Exception as e:
-            print(f"[{printer['name']}] Connection failed: {e}")
+        fields = extract_print_fields(payload)
 
-        print(f"[{printer['name']}] Reconnecting in 5 seconds...")
-        time.sleep(5)
+        payload_signature = (
+            fields["progress"],
+            fields["status"],
+            fields["job_name"],
+            fields["nozzle_temp"],
+            fields["bed_temp"],
+            fields["material"],
+            fields["color"],
+        )
+
+        now = now_seconds()
+        enough_time_passed = (
+            now - self.last_fiware_update >= MIN_FIWARE_UPDATE_INTERVAL_SECONDS
+        )
+        payload_changed = payload_signature != self.last_payload_signature
+
+        if not enough_time_passed and not payload_changed:
+            return
+
+        self.last_fiware_update = now
+        self.last_payload_signature = payload_signature
+
+        print(
+            f"[{self.name}] "
+            f"{fields['progress']}% | "
+            f"{fields['status']} | "
+            f"Job: {fields['job_name']} | "
+            f"Material: {fields['material']} | "
+            f"Color: {fields['color']}"
+        )
+
+        update_printer(
+            self.name,
+            fields["progress"],
+            fields["status"],
+            fields["job_name"],
+            fields["nozzle_temp"],
+            fields["bed_temp"],
+            fields["material"],
+            fields["color"],
+        )
+
+    def run_once(self):
+        self.client = self.build_client()
+
+        print(f"Starting connection for {self.name}")
+
+        try:
+            self.client.connect(self.ip, MQTT_PORT, keepalive=60)
+            self.client.loop_start()
+
+            while not _stop_event.is_set():
+                time.sleep(1)
+
+        except Exception as error:
+            message = (
+                f"MQTT connection exception for {self.name}: {error}. "
+                "Check IP address, printer network, and access code."
+            )
+            print(f"[{self.name}] {message}")
+            update_local_health(self.name, False, message)
+
+        finally:
+            try:
+                if self.client:
+                    self.client.loop_stop()
+                    self.client.disconnect()
+            except Exception:
+                pass
+
+    def run_forever(self):
+        while not _stop_event.is_set():
+            self.run_once()
+
+            if _stop_event.is_set():
+                break
+
+            time.sleep(CONNECT_RETRY_SECONDS)
+
+
+def signal_handler(signum, frame):
+    print(f"[SYSTEM] Received signal {signum}. Stopping bridge...")
+    _stop_event.set()
+
+
+def start_workers():
+    printers = load_enabled_printers()
+
+    if not printers:
+        print("[SYSTEM] No enabled printers found in printers.json")
+        return []
+
+    threads = []
+
+    for printer in printers:
+        worker = PrinterMqttWorker(printer)
+
+        thread = threading.Thread(
+            target=worker.run_forever,
+            name=f"mqtt-{printer['id'] or printer['name']}",
+            daemon=True,
+        )
+
+        thread.start()
+        threads.append(thread)
+
+        time.sleep(1)
+
+    return threads
 
 
 def main():
-    printers = load_printers()
-    threads = []
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
 
-    for p in printers:
-        if not p.get("enabled", True):
-            continue
+    print("[SYSTEM] Starting Bambu MQTT to FIWARE bridge")
+    print(f"[SYSTEM] Using config: {PRINTERS_FILE}")
 
-        t = threading.Thread(target=run_printer, args=(p,), daemon=True)
-        t.start()
-        threads.append(t)
+    threads = start_workers()
 
-        time.sleep(2)
+    try:
+        while not _stop_event.is_set():
+            time.sleep(CONFIG_RECHECK_SECONDS)
 
-    for t in threads:
-        t.join()
+            alive_count = sum(1 for thread in threads if thread.is_alive())
+
+            if alive_count == 0:
+                print("[SYSTEM] All worker threads stopped. Restarting workers...")
+                threads = start_workers()
+
+    finally:
+        _stop_event.set()
+
+        for thread in threads:
+            thread.join(timeout=5)
+
+        print("[SYSTEM] Bridge stopped")
 
 
 if __name__ == "__main__":

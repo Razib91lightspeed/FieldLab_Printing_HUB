@@ -1,5 +1,12 @@
 import React from 'react';
-import { Printer, Clock, Layers, Thermometer, Zap, AlertTriangle } from 'lucide-react';
+import {
+  Printer,
+  Clock,
+  Layers,
+  Thermometer,
+  Zap,
+  AlertTriangle,
+} from 'lucide-react';
 import { PrinterData } from '../../types';
 import { StatusBadge } from '../common/StatusBadge';
 
@@ -8,8 +15,21 @@ interface Props {
   onClick: () => void;
 }
 
+const normalizeFilamentColor = (color?: string | null) => {
+  if (!color) return null;
+
+  const value = color.trim();
+
+  if (!value || value.toLowerCase() === 'unknown') return null;
+
+  if (value.startsWith('#')) return value;
+
+  return `#${value}`;
+};
+
 export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
   const showBookingWarning = !!printer.bookingWarning;
+  const filamentColor = normalizeFilamentColor(printer.color);
 
   return (
     <div
@@ -31,6 +51,7 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
           >
             <Printer size={24} />
           </div>
+
           <div>
             <h3 className="font-bold text-lab-text group-hover:text-lab-primary transition-colors">
               {printer.name}
@@ -58,9 +79,14 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
       <div className="space-y-4">
         <div>
           <div className="flex justify-between text-sm mb-1">
-            <span className="text-lab-subtext font-medium">Job Progress</span>
-            <span className="font-bold text-lab-text">{Math.round(printer.progress)}%</span>
+            <span className="text-lab-subtext font-medium">
+              Job Progress
+            </span>
+            <span className="font-bold text-lab-text">
+              {Math.round(printer.progress)}%
+            </span>
           </div>
+
           <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
             <div
               className={`h-2.5 rounded-full transition-all duration-1000 ${
@@ -89,6 +115,15 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
 
           <div className="flex items-center gap-2 text-sm text-lab-subtext">
             <Zap size={16} />
+
+            {filamentColor && (
+              <span
+                className="w-5 h-5 rounded-full border border-gray-300 shrink-0"
+                style={{ backgroundColor: filamentColor }}
+                title={filamentColor}
+              />
+            )}
+
             <span
               className={
                 printer.material === 'Material status unavailable'
