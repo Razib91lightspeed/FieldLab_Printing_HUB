@@ -7,9 +7,11 @@ import {
   RefreshCw,
   Settings,
   Shield,
+  Trash2,
 } from 'lucide-react';
 import {
   addSubAdmin,
+  deleteSubAdmin,
   getSession,
   getUsers,
   loginAdmin,
@@ -27,6 +29,15 @@ interface Props {
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message;
   return 'Something went wrong.';
+}
+
+function isMainAdmin(session: AdminSession | null) {
+  return Boolean(
+    session &&
+      session.role === 'administrator' &&
+      session.isSuperAdmin === true &&
+      session.username === 'admin'
+  );
 }
 
 export const SettingsAccessView: React.FC<Props> = ({
@@ -48,6 +59,8 @@ export const SettingsAccessView: React.FC<Props> = ({
 
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const mainAdmin = isMainAdmin(session);
 
   const subAdmins = useMemo(
     () => users.filter((user) => user.role === 'sub_admin'),
@@ -81,6 +94,7 @@ export const SettingsAccessView: React.FC<Props> = ({
       setSession(loggedInSession);
       setLoginUsername('');
       setLoginPassword('');
+      setUsers(getUsers());
     } catch (err) {
       setError(getErrorMessage(err));
     }
@@ -90,6 +104,7 @@ export const SettingsAccessView: React.FC<Props> = ({
     logoutAdmin();
     setSession(null);
     setMessage('Logged out.');
+    setError(null);
   };
 
   const handleAddSubAdmin = async (
@@ -97,6 +112,11 @@ export const SettingsAccessView: React.FC<Props> = ({
   ) => {
     event.preventDefault();
     resetMessages();
+
+    if (!mainAdmin) {
+      setError('Only the main admin user can add sub-admin users.');
+      return;
+    }
 
     try {
       await addSubAdmin(newEmail, newPassword);
@@ -110,11 +130,39 @@ export const SettingsAccessView: React.FC<Props> = ({
     }
   };
 
+  const handleDeleteSubAdmin = (email: string) => {
+    resetMessages();
+
+    if (!mainAdmin) {
+      setError('Only the main admin user can delete sub-admin users.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete sub-admin user ${email}? This cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      deleteSubAdmin(email);
+      setMessage(`Sub-admin user ${email} deleted successfully.`);
+      reload();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  };
+
   const handleReplaceSubAdmin = async (
     event: React.FormEvent<HTMLFormElement>
   ) => {
     event.preventDefault();
     resetMessages();
+
+    if (!mainAdmin) {
+      setError('Only the main admin user can replace sub-admin users.');
+      return;
+    }
 
     try {
       await replaceSubAdmin(
@@ -299,6 +347,9 @@ export const SettingsAccessView: React.FC<Props> = ({
                       <th className="p-3 text-sm font-bold text-lab-subtext">
                         Updated
                       </th>
+                      <th className="p-3 text-right text-sm font-bold text-lab-subtext">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
 
@@ -316,6 +367,25 @@ export const SettingsAccessView: React.FC<Props> = ({
                         <td className="p-3 text-sm text-lab-subtext">
                           {new Date(user.updatedAt).toLocaleString()}
                         </td>
+
+                        <td className="p-3 text-right">
+                          {mainAdmin ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleDeleteSubAdmin(user.email)
+                              }
+                              className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 hover:text-red-800"
+                            >
+                              <Trash2 size={15} />
+                              Delete
+                            </button>
+                          ) : (
+                            <span className="text-sm text-lab-subtext">
+                              —
+                            </span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -324,7 +394,7 @@ export const SettingsAccessView: React.FC<Props> = ({
             )}
           </div>
 
-          {subAdmins.length < MAX_SUB_ADMINS && (
+          {mainAdmin && subAdmins.length < MAX_SUB_ADMINS && (
             <div className="bg-white rounded-xl shadow-sm border border-lab-accent p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Plus className="text-lab-primary" />
@@ -363,7 +433,7 @@ export const SettingsAccessView: React.FC<Props> = ({
             </div>
           )}
 
-          {subAdmins.length >= MAX_SUB_ADMINS && (
+          {mainAdmin && subAdmins.length >= MAX_SUB_ADMINS && (
             <div className="bg-white rounded-xl shadow-sm border border-yellow-200 p-6">
               <div className="flex items-center gap-2 mb-4">
                 <RefreshCw className="text-yellow-600" />
@@ -375,7 +445,8 @@ export const SettingsAccessView: React.FC<Props> = ({
 
               <p className="text-sm text-lab-subtext mb-4">
                 Maximum 3 sub-admins already exist. To add a new one, select
-                which existing user should be replaced.
+                which existing user should be replaced, or delete one from the
+                table above.
               </p>
 
               <form onSubmit={handleReplaceSubAdmin} className="space-y-4">
@@ -420,6 +491,13 @@ export const SettingsAccessView: React.FC<Props> = ({
                   Replace Sub-admin
                 </button>
               </form>
+            </div>
+          )}
+
+          {!mainAdmin && (
+            <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+              You can open printer settings, but only the main admin account
+              can add, delete, or replace sub-admin users.
             </div>
           )}
         </div>

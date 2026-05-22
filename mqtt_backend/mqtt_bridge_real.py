@@ -277,28 +277,66 @@ def get_tray_id(tray):
 
 
 def get_active_tray_id(print_data):
-    tray_now = first_existing(print_data, ["tray_now", "trayNow"])
-    tray_tar = first_existing(print_data, ["tray_tar", "trayTar", "tray_target"])
+    """
+    Find the active filament tray from Bambu MQTT payload.
 
-    for value in [tray_now, tray_tar]:
+    Important:
+    For AMS printers, tray_now/tray_tar are usually inside print_data["ams"],
+    not directly inside print_data.
+
+    Example:
+      print.ams.tray_now = "2"
+      print.ams.tray_tar = "2"
+
+    That means active AMS tray is tray id 2.
+    """
+
+    def clean_tray_id(value):
         if value is None:
-            continue
+            return None
 
         text = str(value).strip()
 
-        if text and text not in ["-1", "254", "255"]:
-            return text
+        if not text:
+            return None
 
-    for value in [tray_now, tray_tar]:
-        if value is None:
-            continue
+        # Bambu uses 255 / 254 for virtual/no tray, not a real AMS tray.
+        if text in ["255", "254", "-1", "unknown", "Unknown", "None", "null"]:
+            return None
 
-        text = str(value).strip()
+        return text
 
-        if text:
-            return text
+    ams_data = print_data.get("ams")
 
-    return ""
+    # 1. Correct location for AMS printers: print.ams.tray_now / print.ams.tray_tar
+    if isinstance(ams_data, dict):
+        for key in ["tray_now", "tray_tar", "tray_pre"]:
+            tray_id = clean_tray_id(ams_data.get(key))
+            if tray_id is not None:
+                return tray_id
+
+    # 2. Fallback: sometimes Bambu may expose it directly under print
+    for key in [
+        "tray_now",
+        "tray_tar",
+        "tray_pre",
+        "tray_info_idx",
+        "curr_tray",
+        "current_tray",
+        "active_tray",
+    ]:
+        tray_id = clean_tray_id(print_data.get(key))
+        if tray_id is not None:
+            return tray_id
+
+    # 3. Fallback: virtual tray, but ignore 255/254
+    vt_tray = print_data.get("vt_tray") or print_data.get("vtTray")
+    if isinstance(vt_tray, dict):
+        tray_id = clean_tray_id(vt_tray.get("id"))
+        if tray_id is not None:
+            return tray_id
+
+    return None
 
 
 def extract_material_and_color(print_data):

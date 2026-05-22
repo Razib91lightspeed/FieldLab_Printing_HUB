@@ -13,7 +13,7 @@ import { syncPiTimeFromBrowser } from './api/settings';
 import { markSettingsAccessLeft } from './utils/adminAuth';
 
 const PI_TIME_SYNC_STORAGE_KEY = 'fieldlab_pi_time_last_synced_at';
-const PI_TIME_SYNC_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+const PI_TIME_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 
 type AppViewType = ViewType | 'settingsAccess';
 
@@ -26,10 +26,13 @@ function App() {
   const [selectedPrinter, setSelectedPrinter] = useState<PrinterData | null>(
     null
   );
+  
+  // Real-time clock tick trigger state
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   const { printers } = usePrinters();
 
-  const showNavbar = view !== 'visualization' && view !== 'booking';
+  const showNavbar = view !== 'detail';
 
   const goToView = (nextView: AppViewType) => {
     const leavingSettings =
@@ -51,6 +54,16 @@ function App() {
     goToView(nextView);
   };
 
+  // Clock Ticker Engine
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  // Pi server system time syncing mechanism
   useEffect(() => {
     const syncPiTime = async () => {
       try {
@@ -89,12 +102,27 @@ function App() {
   const navbarView: ViewType =
     view === 'settingsAccess' ? 'settings' : view;
 
+  // Split date and time formatting for standalone 3D block components
+  const timeString = currentTime.toLocaleTimeString([], { 
+    hour: '2-digit', 
+    minute: '2-digit', 
+    second: '2-digit' 
+  });
+  
+  const dateString = currentTime.toLocaleDateString([], { 
+    weekday: 'short', 
+    day: 'numeric', 
+    month: 'short' 
+  });
+
   return (
     <div className="min-h-screen bg-lab-bg font-sans text-lab-text">
       {showNavbar && (
         <Navbar
           currentView={navbarView}
           onViewChange={handleViewChange}
+          dateString={dateString}
+          timeString={timeString}
         />
       )}
 

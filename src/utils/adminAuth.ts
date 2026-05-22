@@ -22,6 +22,8 @@ const SETTINGS_LEFT_AT_KEY = 'fieldlab_settings_left_at';
 export const MAX_SUB_ADMINS = 3;
 export const SETTINGS_SESSION_GRACE_MS = 5000;
 
+// Prototype-only super admin credentials.
+// For real production, move authentication to the backend.
 const SUPER_ADMIN_USERNAME = 'admin';
 const SUPER_ADMIN_PASSWORD = 'admin';
 
@@ -69,7 +71,9 @@ function safeUsers(value: unknown): AdminUser[] {
     return (
       typeof item.email === 'string' &&
       typeof item.passwordHash === 'string' &&
-      (item.role === 'administrator' || item.role === 'sub_admin')
+      (item.role === 'administrator' || item.role === 'sub_admin') &&
+      typeof item.createdAt === 'string' &&
+      typeof item.updatedAt === 'string'
     );
   });
 }
@@ -112,6 +116,11 @@ export function clearSettingsAccessLeftMarker() {
   localStorage.removeItem(SETTINGS_LEFT_AT_KEY);
 }
 
+export function logoutAdmin() {
+  localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(SETTINGS_LEFT_AT_KEY);
+}
+
 export function getSession(): AdminSession | null {
   try {
     if (isSessionExpiredAfterLeavingSettings()) {
@@ -144,9 +153,13 @@ function saveSession(session: AdminSession) {
   clearSettingsAccessLeftMarker();
 }
 
-export function logoutAdmin() {
-  localStorage.removeItem(SESSION_KEY);
-  localStorage.removeItem(SETTINGS_LEFT_AT_KEY);
+export function isSuperAdminSession(session: AdminSession | null) {
+  return Boolean(
+    session &&
+      session.role === 'administrator' &&
+      session.isSuperAdmin === true &&
+      session.username === SUPER_ADMIN_USERNAME
+  );
 }
 
 export async function loginAdmin(username: string, password: string) {
@@ -188,6 +201,7 @@ export async function loginAdmin(username: string, password: string) {
     username: user.email,
     role: user.role,
     loginAt: new Date().toISOString(),
+    isSuperAdmin: false,
   };
 
   saveSession(session);
@@ -195,6 +209,12 @@ export async function loginAdmin(username: string, password: string) {
 }
 
 export async function addSubAdmin(email: string, password: string) {
+  const session = getSession();
+
+  if (!isSuperAdminSession(session)) {
+    throw new Error('Only the main admin user can add sub-admin users.');
+  }
+
   const users = getUsers();
   const normalizedEmail = email.trim().toLowerCase();
 
@@ -214,7 +234,7 @@ export async function addSubAdmin(email: string, password: string) {
 
   if (subAdmins.length >= MAX_SUB_ADMINS) {
     throw new Error(
-      'Maximum 3 sub-admin users are allowed. Replace an existing user instead.'
+      'Maximum 3 sub-admin users are allowed. Delete an existing user first.'
     );
   }
 
@@ -233,11 +253,49 @@ export async function addSubAdmin(email: string, password: string) {
   return newUser;
 }
 
+export function deleteSubAdmin(email: string) {
+  const session = getSession();
+
+  if (!isSuperAdminSession(session)) {
+    throw new Error('Only the main admin user can delete sub-admin users.');
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (!isValidTuniEmail(normalizedEmail)) {
+    throw new Error('Invalid sub-admin email.');
+  }
+
+  const users = getUsers();
+
+  const targetUser = users.find(
+    (user) => user.email === normalizedEmail && user.role === 'sub_admin'
+  );
+
+  if (!targetUser) {
+    throw new Error('Sub-admin user was not found.');
+  }
+
+  const updatedUsers = users.filter(
+    (user) => !(user.email === normalizedEmail && user.role === 'sub_admin')
+  );
+
+  saveUsers(updatedUsers);
+
+  return updatedUsers;
+}
+
 export async function replaceSubAdmin(
   oldEmail: string,
   newEmail: string,
   newPassword: string
 ) {
+  const session = getSession();
+
+  if (!isSuperAdminSession(session)) {
+    throw new Error('Only the main admin user can replace sub-admin users.');
+  }
+
   const users = getUsers();
 
   const oldNormalizedEmail = oldEmail.trim().toLowerCase();
