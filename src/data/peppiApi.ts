@@ -23,7 +23,7 @@ interface PeppiApiResponse {
 type AnyRecord = Record<string, any>;
 
 const PEPPI_API_BASE =
-  process.env.REACT_APP_PEPPI_API_BASE || 'http://localhost:5001';
+  process.env.REACT_APP_PEPPI_API_BASE || 'http://172.16.101.22:5001';
 
 const API_URL = `${PEPPI_API_BASE}/api/peppi`;
 

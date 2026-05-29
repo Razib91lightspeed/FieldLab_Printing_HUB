@@ -165,3 +165,12 @@ temp/
 # Add any project-specific files to ignore below
 # e.g., local mock data that shouldn't be committed
 # /src/data/local-mocks/
+
+
+.env
+*.env
+printers.json
+printers_backend/data/printers.json
+mqtt_backend/data/printers.json
+peppi_backend/data/peppi_cache.json
+logs/

@@ -1,0 +1,31 @@
+name: Deploy FieldLab Dashboard to VM
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, fieldlab-vm]
+
+    steps:
+      - name: Deploy latest code on VM
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          cd "C:\Users\kn\Desktop\FieldLab_Printing_HUB"
+
+          git fetch origin main
+          git reset --hard origin/main
+
+          npm.cmd install
+          npm.cmd run build
+
+          pm2.cmd restart fieldlab-printers-backend
+          pm2.cmd restart fieldlab-peppi-backend
+          pm2.cmd restart fieldlab-frontend
+
+          pm2.cmd save
+          pm2.cmd list

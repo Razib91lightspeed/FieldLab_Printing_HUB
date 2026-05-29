@@ -169,7 +169,7 @@ function getBackendBaseUrlCandidates() {
   const host = window.location.hostname;
   const autoDetected = [
     host ? `http://${host}:4000` : null,
-    'http://localhost:4000',
+    'http://172.16.101.22:4000',
     'http://127.0.0.1:4000',
     'http://192.168.0.21:4000',
   ];
