@@ -669,6 +669,20 @@ app.get("/api/printers", async (_req, res) => {
   return res.json(data);
 });
 
+app.get("/api/live-printers", async (_req, res) => {
+  const { data, error } = await fetchFiwarePrintersSafe();
+
+  if (error && data.length === 0) {
+    return res.status(500).json({
+      ok: false,
+      error: "FIWARE request failed",
+      details: error,
+    });
+  }
+
+  return res.json(data);
+});
+
 /* =========================================================
    RUNTIME STATE
    ========================================================= */
