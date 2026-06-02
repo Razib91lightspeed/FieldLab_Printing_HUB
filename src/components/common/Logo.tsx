@@ -5,10 +5,11 @@ interface Props {
 }
 
 export const Logo: React.FC<Props> = ({ size = 'md' }) => {
+  // We decouple the padding: generous on the outside edges, tight on the inside seam
   const sizes = {
-    sm: { text: 'text-lg', padding: 'px-3 py-1.5' },
-    md: { text: 'text-xl', padding: 'px-4 py-2' },
-    lg: { text: 'text-3xl', padding: 'px-5 py-3' }
+    sm: { text: 'text-lg', pLeft: 'pl-3 pr-0.5', pRight: 'pl-0.5 pr-3', py: 'py-1.5' },
+    md: { text: 'text-xl', pLeft: 'pl-4 pr-1', pRight: 'pl-1 pr-4', py: 'py-2' },
+    lg: { text: 'text-3xl', pLeft: 'pl-5 pr-1.5', pRight: 'pl-1.5 pr-5', py: 'py-3' }
   };
 
   const s = sizes[size];
@@ -17,7 +18,7 @@ export const Logo: React.FC<Props> = ({ size = 'md' }) => {
     <div className="flex items-center select-none transform hover:scale-105 transition-transform duration-300">
       {/* FIELD - bright white background, purple text with 3D depth */}
       <div
-        className={`${s.padding} rounded-l-xl relative overflow-hidden`}
+        className={`${s.pLeft} ${s.py} rounded-l-xl relative overflow-hidden`}
         style={{
           background: 'linear-gradient(145deg, #FFFFFF 0%, #FAFAFA 50%, #FFFFFF 100%)',
           boxShadow: `
@@ -57,7 +58,8 @@ export const Logo: React.FC<Props> = ({ size = 'md' }) => {
 
       {/* LAB - purple background, white text with 3D depth */}
       <div
-        className={`${s.padding} rounded-r-xl relative overflow-hidden`}
+        // -ml-[2px] perfectly overlaps the borders, creating a flawless shared seam
+        className={`${s.pRight} ${s.py} -ml-[2px] rounded-r-xl relative overflow-hidden`}
         style={{
           background: 'linear-gradient(145deg, #8B5CF6 0%, #7C3AED 50%, #6D28D9 100%)',
           boxShadow: `
