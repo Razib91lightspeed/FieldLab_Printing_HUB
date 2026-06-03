@@ -27,9 +27,24 @@ const normalizeFilamentColor = (color?: string | null) => {
   return `#${value}`;
 };
 
+const getBookingBadgeClasses = (
+  tone?: 'reserved' | 'free' | 'unknown'
+): string => {
+  if (tone === 'reserved') {
+    return 'bg-orange-50 text-orange-700 border border-orange-200';
+  }
+
+  if (tone === 'free') {
+    return 'bg-green-50 text-green-700 border border-green-200';
+  }
+
+  return 'bg-gray-50 text-gray-600 border border-gray-200';
+};
+
 export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
   const showBookingWarning = !!printer.bookingWarning;
   const filamentColor = normalizeFilamentColor(printer.color);
+  const hasAlerts = (printer.alerts || 0) > 0;
 
   return (
     <div
@@ -40,10 +55,12 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
           : 'border-lab-accent hover:border-lab-secondary'
       }`}
     >
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex items-center gap-3">
+      {/* Card Header */}
+      <div className="flex justify-between items-start mb-4 gap-3">
+        {/* Left side: icon, name, status */}
+        <div className="flex items-center gap-3 min-w-0">
           <div
-            className={`p-2 rounded-lg ${
+            className={`p-2 rounded-lg shrink-0 ${
               printer.status === 'error'
                 ? 'bg-red-50 text-red-500'
                 : 'bg-lab-accent text-lab-primary'
@@ -52,36 +69,56 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
             <Printer size={24} />
           </div>
 
-          <div>
-            <h3 className="font-bold text-lab-text group-hover:text-lab-primary transition-colors">
+          <div className="min-w-0">
+            <h3 className="font-bold text-lab-text group-hover:text-lab-primary transition-colors truncate">
               {printer.name}
             </h3>
-            <StatusBadge status={printer.status} />
+
+            <div className="mt-1">
+              <StatusBadge status={printer.status} />
+            </div>
           </div>
         </div>
 
-        {printer.alerts > 0 && (
-          <div className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full animate-pulse">
-            {printer.alerts}
-          </div>
-        )}
+        {/* Right side: booking badge + alert badge */}
+        <div className="flex flex-col items-end gap-2 shrink-0 max-w-[170px]">
+          {printer.bookingStatusText && (
+            <div
+              className={`text-[11px] px-2.5 py-1 rounded-full font-semibold whitespace-nowrap shadow-sm ${getBookingBadgeClasses(
+                printer.bookingStatusTone
+              )}`}
+              title={printer.bookingPeriodText || printer.bookingStatusText}
+            >
+              {printer.bookingStatusText}
+            </div>
+          )}
+
+          {hasAlerts && (
+            <div className="bg-red-500 text-white text-xs font-bold min-w-6 h-6 px-2 rounded-full flex items-center justify-center animate-pulse">
+              {printer.alerts}
+            </div>
+          )}
+        </div>
       </div>
 
+      {/* Booking warning */}
       {showBookingWarning && (
         <div className="mb-4 flex items-center gap-2 rounded-lg bg-yellow-50 border border-yellow-200 px-3 py-2 text-yellow-800 animate-pulse">
-          <AlertTriangle size={16} />
+          <AlertTriangle size={16} className="shrink-0" />
           <span className="text-sm font-medium">
             {printer.bookingWarning}
           </span>
         </div>
       )}
 
+      {/* Progress and printer data */}
       <div className="space-y-4">
         <div>
           <div className="flex justify-between text-sm mb-1">
             <span className="text-lab-subtext font-medium">
               Job Progress
             </span>
+
             <span className="font-bold text-lab-text">
               {Math.round(printer.progress)}%
             </span>
@@ -92,29 +129,31 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
               className={`h-2.5 rounded-full transition-all duration-1000 ${
                 printer.status === 'error' ? 'bg-red-500' : 'bg-lab-primary'
               }`}
-              style={{ width: `${printer.progress}%` }}
+              style={{ width: `${Math.min(Math.max(printer.progress, 0), 100)}%` }}
             />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-50">
-          <div className="flex items-center gap-2 text-sm text-lab-subtext">
-            <Layers size={16} />
+          <div className="flex items-center gap-2 text-sm text-lab-subtext min-w-0">
+            <Layers size={16} className="shrink-0" />
             <span className="truncate">{printer.jobName}</span>
           </div>
 
-          <div className="flex items-center gap-2 text-sm text-lab-subtext">
-            <Clock size={16} />
-            <span>{printer.timeRemaining}</span>
+          <div className="flex items-center gap-2 text-sm text-lab-subtext min-w-0">
+            <Clock size={16} className="shrink-0" />
+            <span className="truncate">{printer.timeRemaining}</span>
           </div>
 
-          <div className="flex items-center gap-2 text-sm text-lab-subtext">
-            <Thermometer size={16} />
-            <span>Nozzle: {Math.round(printer.nozzleTemp)}°C</span>
+          <div className="flex items-center gap-2 text-sm text-lab-subtext min-w-0">
+            <Thermometer size={16} className="shrink-0" />
+            <span className="truncate">
+              Nozzle: {Math.round(printer.nozzleTemp)}°C
+            </span>
           </div>
 
-          <div className="flex items-center gap-2 text-sm text-lab-subtext">
-            <Zap size={16} />
+          <div className="flex items-center gap-2 text-sm text-lab-subtext min-w-0">
+            <Zap size={16} className="shrink-0" />
 
             {filamentColor && (
               <span
@@ -125,11 +164,11 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
             )}
 
             <span
-              className={
+              className={`truncate ${
                 printer.material === 'Material status unavailable'
                   ? 'text-gray-400'
                   : ''
-              }
+              }`}
             >
               {printer.material}
             </span>

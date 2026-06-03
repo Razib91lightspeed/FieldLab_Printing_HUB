@@ -6,8 +6,8 @@ import { fetchDashboard } from '../api/dashboard';
 import { fetchPeppiBookings } from '../data/peppiApi';
 
 import { PrinterData } from '../types';
-import { mapPeppiToPrinters } from '../utils/bookingAdapter';
 import { mapDashboardData } from '../utils/mapDashboardData';
+import { mapPeppiToPrinters } from '../utils/bookingAdapter';
 
 interface Props {
   printers: PrinterData[];
@@ -34,6 +34,71 @@ function normalizePrinterKey(value?: string) {
     .replace(/_/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function parseBookingDate(value?: string | null): Date | null {
+  if (!value) return null;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date;
+}
+
+function formatBookingTime(value?: string | null): string {
+  const date = parseBookingDate(value);
+
+  if (!date) {
+    return '';
+  }
+
+  return date.toLocaleTimeString('fi-FI', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
+function buildBookingBadge(booking: any) {
+  const currentBooking = booking?.currentBooking || null;
+  const nextBooking = booking?.nextBooking || null;
+
+  if (currentBooking) {
+    const startText = formatBookingTime(currentBooking.start);
+    const endText = formatBookingTime(currentBooking.end);
+
+    return {
+      bookingStatusText: endText ? `Reserved until ${endText}` : 'Reserved',
+      bookingStatusTone: 'reserved' as const,
+      bookingPeriodText:
+        startText && endText ? `${startText}–${endText}` : null,
+    };
+  }
+
+  if (nextBooking) {
+    const nextStartText = formatBookingTime(nextBooking.start);
+    const nextEndText = formatBookingTime(nextBooking.end);
+
+    return {
+      bookingStatusText: nextStartText
+        ? `Free until ${nextStartText}`
+        : 'Free now',
+      bookingStatusTone: 'free' as const,
+      bookingPeriodText:
+        nextStartText && nextEndText
+          ? `Next booking: ${nextStartText}–${nextEndText}`
+          : null,
+    };
+  }
+
+  return {
+    bookingStatusText: 'Free now',
+    bookingStatusTone: 'free' as const,
+    bookingPeriodText: null,
+  };
 }
 
 function configPrinterToDashboardPrinter(printer: ConfigPrinter): PrinterData {
@@ -63,6 +128,10 @@ function configPrinterToDashboardPrinter(printer: ConfigPrinter): PrinterData {
     hasBooking: false,
     bookingTitle: null,
     bookingWarning: printer.enabled ? 'No FIWARE telemetry' : null,
+
+    bookingStatusText: 'Free now',
+    bookingStatusTone: 'free',
+    bookingPeriodText: null,
   };
 }
 
@@ -157,13 +226,20 @@ export const FleetView: React.FC<Props> = ({
             ? 'Printing without Peppi booking'
             : printer.bookingWarning || null;
 
+        const bookingBadge = buildBookingBadge(booking);
+
         return {
           ...printer,
           hasBooking,
           bookingTitle: booking?.currentBooking?.title || null,
           bookingWarning,
+
+          bookingStatusText: bookingBadge.bookingStatusText,
+          bookingStatusTone: bookingBadge.bookingStatusTone,
+          bookingPeriodText: bookingBadge.bookingPeriodText,
+
           // Peppi booking warning should NOT create the red alert circle.
-          // // Red alert count should only come from real dashboard/pipeline errors.
+          // Red alert count should only come from real dashboard/pipeline errors.
           alerts: printer.alerts || 0,
         };
       });
@@ -183,6 +259,9 @@ export const FleetView: React.FC<Props> = ({
         timeRemaining: 'No connection',
         alerts: Math.max(printer.alerts || 0, 1),
         bookingWarning: 'Dashboard backend unavailable',
+        bookingStatusText: 'Booking unavailable',
+        bookingStatusTone: 'unknown' as const,
+        bookingPeriodText: null,
       }));
 
       setLivePrinters(fallback);

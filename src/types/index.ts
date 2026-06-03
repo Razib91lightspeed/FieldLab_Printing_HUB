@@ -29,6 +29,9 @@ export interface PrinterData {
   bookingWarning?: string | null;
   hasBooking?: boolean;
   bookingTitle?: string | null;
+  bookingStatusText?: string | null;
+  bookingStatusTone?: 'reserved' | 'free' | 'unknown';
+  bookingPeriodText?: string | null;
 }
 
 export interface AlertItem {
