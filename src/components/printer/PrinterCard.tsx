@@ -46,62 +46,136 @@ const getPrinterStatusLabel = (printer: PrinterData): string => {
   const timeRemaining = String(printer.timeRemaining || '').toLowerCase();
   const warning = String(printer.bookingWarning || '').toLowerCase();
 
+  const combinedText = `${jobName} ${timeRemaining} ${warning}`;
+
+  /*
+    Normal states.
+    Finished will stay green because printer.status === 'finished'.
+  */
   if (printer.status !== 'error') {
     switch (printer.status) {
       case 'printing':
         return 'Printing';
+
       case 'finished':
         return 'Finished';
+
       case 'idle':
         return 'Idle';
+
       default:
         return 'Error';
     }
   }
 
+  /*
+    Telemetry / FIWARE / backend problems.
+    These are not real print failures.
+  */
   if (
-    jobName.includes('no live fiware') ||
-    timeRemaining.includes('pipeline stale') ||
-    warning.includes('no fiware') ||
-    warning.includes('telemetry')
+    combinedText.includes('no live fiware') ||
+    combinedText.includes('pipeline stale') ||
+    combinedText.includes('no fiware') ||
+    combinedText.includes('fiware') ||
+    combinedText.includes('telemetry') ||
+    combinedText.includes('backend unavailable')
   ) {
     return 'Telemetry Missing';
   }
 
+  /*
+    Connection / access-code / MQTT problems.
+    These are also not real print failures.
+  */
   if (
-    warning.includes('access code') ||
-    warning.includes('mqtt') ||
-    warning.includes('connection') ||
-    warning.includes('backend unavailable')
+    combinedText.includes('access code') ||
+    combinedText.includes('mqtt') ||
+    combinedText.includes('connection') ||
+    combinedText.includes('connect') ||
+    combinedText.includes('unreachable') ||
+    combinedText.includes('offline')
   ) {
     return 'Connection Issue';
   }
 
+  /*
+    Paused state.
+  */
   if (
-    timeRemaining.includes('failed') ||
-    jobName.includes('failed') ||
-    jobName.includes('cancelled') ||
-    jobName.includes('canceled')
-  ) {
-    return 'Failed';
-  }
-
-  if (
-    timeRemaining.includes('stopped') ||
-    jobName.includes('stopped') ||
-    jobName.includes('stop')
-  ) {
-    return 'Stopped';
-  }
-
-  if (
-    timeRemaining.includes('paused') ||
-    jobName.includes('paused') ||
-    jobName.includes('pause')
+    combinedText.includes('paused') ||
+    combinedText.includes('pause')
   ) {
     return 'Paused';
   }
 
+  /*
+    Real failure indicators.
+    These should show Failed because something went wrong physically/materially.
+  */
+  if (
+    combinedText.includes('filament runout') ||
+    combinedText.includes('filament error') ||
+    combinedText.includes('filament stuck') ||
+    combinedText.includes('filament jam') ||
+    combinedText.includes('nozzle') ||
+    combinedText.includes('clog') ||
+    combinedText.includes('jam') ||
+    combinedText.includes('spaghetti') ||
+    combinedText.includes('bed adhesion') ||
+    combinedText.includes('adhesion') ||
+    combinedText.includes('thermal') ||
+    combinedText.includes('temperature') ||
+    combinedText.includes('overheat') ||
+    combinedText.includes('hms') ||
+    combinedText.includes('hardware') ||
+    combinedText.includes('sensor error') ||
+    combinedText.includes('motor') ||
+    combinedText.includes('fan error') ||
+    combinedText.includes('extruder') ||
+    combinedText.includes('heatbed') ||
+    combinedText.includes('ams error')
+  ) {
+    return 'Failed';
+  }
+
+  /*
+    Manual/user stop indicators.
+    If someone presses Stop on the physical printer, Bambu may still report it as Failed.
+    So these cases should show Stopped on the dashboard.
+  */
+  if (
+    combinedText.includes('stopped') ||
+    combinedText.includes('stop') ||
+    combinedText.includes('cancelled') ||
+    combinedText.includes('canceled') ||
+    combinedText.includes('cancel') ||
+    combinedText.includes('abort') ||
+    combinedText.includes('aborted') ||
+    combinedText.includes('terminated') ||
+    combinedText.includes('user stopped') ||
+    combinedText.includes('user cancel') ||
+    combinedText.includes('manual stop') ||
+    combinedText.includes('stopped by user') ||
+    combinedText.includes('cancelled by user') ||
+    combinedText.includes('canceled by user')
+  ) {
+    return 'Stopped';
+  }
+
+  /*
+    Important:
+    If the only text we receive is plain "Failed", we show Stopped.
+    This matches your real case: pressing Stop on the physical printer appears as Failed/Error.
+    Real machine failures should be caught above by specific failure keywords.
+  */
+  if (combinedText.includes('failed')) {
+    return 'Stopped';
+  }
+
+  /*
+    If progress is halfway and printer becomes error, but no real failure reason exists,
+    assume it was manually stopped.
+  */
   if (printer.progress > 0 && printer.progress < 100) {
     return 'Stopped';
   }
@@ -143,7 +217,7 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
               {printer.name}
             </h3>
 
-            <div className="mt-1 max-w-[150px]">
+            <div className="mt-1 max-w-[155px]">
               <StatusBadge status={printer.status} label={statusLabel} />
             </div>
           </div>
