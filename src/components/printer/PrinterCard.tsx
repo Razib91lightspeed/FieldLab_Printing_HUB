@@ -41,10 +41,79 @@ const getBookingBadgeClasses = (
   return 'bg-gray-50 text-gray-600 border border-gray-200';
 };
 
+const getPrinterStatusLabel = (printer: PrinterData): string => {
+  const jobName = String(printer.jobName || '').toLowerCase();
+  const timeRemaining = String(printer.timeRemaining || '').toLowerCase();
+  const warning = String(printer.bookingWarning || '').toLowerCase();
+
+  if (printer.status !== 'error') {
+    switch (printer.status) {
+      case 'printing':
+        return 'Printing';
+      case 'finished':
+        return 'Finished';
+      case 'idle':
+        return 'Idle';
+      default:
+        return 'Error';
+    }
+  }
+
+  if (
+    jobName.includes('no live fiware') ||
+    timeRemaining.includes('pipeline stale') ||
+    warning.includes('no fiware') ||
+    warning.includes('telemetry')
+  ) {
+    return 'Telemetry Missing';
+  }
+
+  if (
+    warning.includes('access code') ||
+    warning.includes('mqtt') ||
+    warning.includes('connection') ||
+    warning.includes('backend unavailable')
+  ) {
+    return 'Connection Issue';
+  }
+
+  if (
+    timeRemaining.includes('failed') ||
+    jobName.includes('failed') ||
+    jobName.includes('cancelled') ||
+    jobName.includes('canceled')
+  ) {
+    return 'Failed';
+  }
+
+  if (
+    timeRemaining.includes('stopped') ||
+    jobName.includes('stopped') ||
+    jobName.includes('stop')
+  ) {
+    return 'Stopped';
+  }
+
+  if (
+    timeRemaining.includes('paused') ||
+    jobName.includes('paused') ||
+    jobName.includes('pause')
+  ) {
+    return 'Paused';
+  }
+
+  if (printer.progress > 0 && printer.progress < 100) {
+    return 'Stopped';
+  }
+
+  return 'Error';
+};
+
 export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
   const showBookingWarning = !!printer.bookingWarning;
   const filamentColor = normalizeFilamentColor(printer.color);
   const hasAlerts = (printer.alerts || 0) > 0;
+  const statusLabel = getPrinterStatusLabel(printer);
 
   return (
     <div
@@ -58,7 +127,7 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
       {/* Card Header */}
       <div className="flex justify-between items-start mb-4 gap-3">
         {/* Left side: icon, name, status */}
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
           <div
             className={`p-2 rounded-lg shrink-0 ${
               printer.status === 'error'
@@ -69,24 +138,35 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
             <Printer size={24} />
           </div>
 
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h3 className="font-bold text-lab-text group-hover:text-lab-primary transition-colors truncate">
               {printer.name}
             </h3>
 
-            <div className="mt-1">
-              <StatusBadge status={printer.status} />
+            <div className="mt-1 max-w-[150px]">
+              <StatusBadge status={printer.status} label={statusLabel} />
             </div>
           </div>
         </div>
 
         {/* Right side: booking badge + alert badge */}
-        <div className="flex flex-col items-end gap-2 shrink-0 max-w-[170px]">
+        <div className="flex flex-col items-end gap-2 shrink-0 max-w-[175px]">
           {printer.bookingStatusText && (
             <div
-              className={`text-[11px] px-2.5 py-1 rounded-full font-semibold whitespace-nowrap shadow-sm ${getBookingBadgeClasses(
-                printer.bookingStatusTone
-              )}`}
+              className={`
+                text-[11px]
+                px-2.5
+                py-1
+                rounded-full
+                font-semibold
+                leading-tight
+                text-center
+                whitespace-normal
+                break-words
+                shadow-sm
+                max-w-full
+                ${getBookingBadgeClasses(printer.bookingStatusTone)}
+              `}
               title={printer.bookingPeriodText || printer.bookingStatusText}
             >
               {printer.bookingStatusText}
@@ -103,9 +183,9 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
 
       {/* Booking warning */}
       {showBookingWarning && (
-        <div className="mb-4 flex items-center gap-2 rounded-lg bg-yellow-50 border border-yellow-200 px-3 py-2 text-yellow-800 animate-pulse">
-          <AlertTriangle size={16} className="shrink-0" />
-          <span className="text-sm font-medium">
+        <div className="mb-4 flex items-start gap-2 rounded-lg bg-yellow-50 border border-yellow-200 px-3 py-2 text-yellow-800 animate-pulse">
+          <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+          <span className="text-sm font-medium leading-snug break-words min-w-0">
             {printer.bookingWarning}
           </span>
         </div>
@@ -129,7 +209,9 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
               className={`h-2.5 rounded-full transition-all duration-1000 ${
                 printer.status === 'error' ? 'bg-red-500' : 'bg-lab-primary'
               }`}
-              style={{ width: `${Math.min(Math.max(printer.progress, 0), 100)}%` }}
+              style={{
+                width: `${Math.min(Math.max(printer.progress, 0), 100)}%`,
+              }}
             />
           </div>
         </div>
@@ -137,12 +219,16 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
         <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-50">
           <div className="flex items-center gap-2 text-sm text-lab-subtext min-w-0">
             <Layers size={16} className="shrink-0" />
-            <span className="truncate">{printer.jobName}</span>
+            <span className="truncate" title={printer.jobName}>
+              {printer.jobName}
+            </span>
           </div>
 
           <div className="flex items-center gap-2 text-sm text-lab-subtext min-w-0">
             <Clock size={16} className="shrink-0" />
-            <span className="truncate">{printer.timeRemaining}</span>
+            <span className="truncate" title={printer.timeRemaining}>
+              {printer.timeRemaining}
+            </span>
           </div>
 
           <div className="flex items-center gap-2 text-sm text-lab-subtext min-w-0">
@@ -169,6 +255,7 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
                   ? 'text-gray-400'
                   : ''
               }`}
+              title={printer.material}
             >
               {printer.material}
             </span>
