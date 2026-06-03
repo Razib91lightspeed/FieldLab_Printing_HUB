@@ -1,16 +1,31 @@
 import { PrinterData, PrinterStatus } from "../types";
 
+type FiwareValue<T> = {
+  value?: T;
+};
+
 type FiwarePrinter = {
   id: string;
-  status?: { value?: string };
-  progress?: { value?: number };
-  jobName?: { value?: string };
-  nozzleTemp?: { value?: number };
-  bedTemp?: { value?: number };
-  material?: { value?: string };
-  color?: { value?: string };
-  lastSeen?: { value?: string };
-  online?: { value?: boolean };
+
+  status?: FiwareValue<string>;
+  progress?: FiwareValue<number>;
+
+  /*
+    These are the real remaining-time fields.
+    remainingTimeMinutes is the one we will send from the Pi/FIWARE later.
+    mc_remaining_time and remain_time are fallback names.
+  */
+  remainingTimeMinutes?: FiwareValue<number | string | null>;
+  mc_remaining_time?: FiwareValue<number | string | null>;
+  remain_time?: FiwareValue<number | string | null>;
+
+  jobName?: FiwareValue<string>;
+  nozzleTemp?: FiwareValue<number>;
+  bedTemp?: FiwareValue<number>;
+  material?: FiwareValue<string>;
+  color?: FiwareValue<string>;
+  lastSeen?: FiwareValue<string>;
+  online?: FiwareValue<boolean>;
 };
 
 const PRINTER_META: Record<string, { ip: string }> = {
@@ -26,48 +41,93 @@ function extractPrinterName(id: string) {
 }
 
 function normalizeStatus(status?: string): PrinterStatus {
-  const s = (status || "").toUpperCase();
+  const s = String(status || "").toUpperCase();
 
   if (s === "RUNNING") return "printing";
+  if (s === "PRINTING") return "printing";
+
   if (s === "PAUSE") return "error";
+  if (s === "PAUSED") return "error";
+
   if (s === "FAILED") return "error";
+  if (s === "ERROR") return "error";
+
   if (s === "FINISH") return "finished";
+  if (s === "FINISHED") return "finished";
+  if (s === "COMPLETED") return "finished";
+  if (s === "COMPLETE") return "finished";
+
   if (s === "IDLE") return "idle";
 
   return "idle";
 }
 
 function inferAlerts(status?: string): number {
-  const s = (status || "").toUpperCase();
+  const s = String(status || "").toUpperCase();
 
-  if (s === "PAUSE" || s === "FAILED") return 1;
+  if (s === "PAUSE" || s === "PAUSED" || s === "FAILED" || s === "ERROR") {
+    return 1;
+  }
 
   return 0;
 }
 
-function inferTimeRemaining(status?: string, progress?: number): string {
-  const s = (status || "").toUpperCase();
-  const p = progress ?? 0;
+function formatRemainingTime(minutes?: number | string | null): string {
+  const value = Number(minutes);
 
-  if (s === "FINISH") return "Done";
-  if (s === "IDLE") return "-";
-  if (s === "PAUSE") return "Paused";
-  if (s === "FAILED") return "Failed";
+  if (!Number.isFinite(value) || value <= 0) {
+    return "-";
+  }
 
-  const remaining = Math.max(0, 100 - p);
-  return `~${remaining} min`;
+  const rounded = Math.round(value);
+
+  if (rounded < 60) {
+    return `~${rounded} min`;
+  }
+
+  const hours = Math.floor(rounded / 60);
+  const mins = rounded % 60;
+
+  if (mins === 0) {
+    return `~${hours} h`;
+  }
+
+  return `~${hours} h ${mins} min`;
+}
+
+function inferTimeRemaining(
+  status?: string,
+  realRemainingMinutes?: number | string | null
+): string {
+  const normalizedStatus = normalizeStatus(status);
+
+  if (normalizedStatus === "finished") {
+    return "Done";
+  }
+
+  if (normalizedStatus === "error") {
+    return "Failed";
+  }
+
+  if (normalizedStatus === "printing") {
+    const formatted = formatRemainingTime(realRemainingMinutes);
+    return formatted === "-" ? "Calculating..." : formatted;
+  }
+
+  return "-";
 }
 
 function normalizeMaterial(raw?: string): string {
-  const value = (raw || "").trim();
+  const value = String(raw || "").trim();
 
-  if (!value) return "Material status unavailable";
+  if (!value) {
+    return "Material status unavailable";
+  }
+
+  const lower = value.toLowerCase();
 
   // These are warning phrases, not actual material names.
-  if (
-    value.toLowerCase() === "please refill pla" ||
-    value.toLowerCase() === "refill pla"
-  ) {
+  if (lower === "please refill pla" || lower === "refill pla") {
     return "Material status unavailable";
   }
 
@@ -79,6 +139,12 @@ export function mapDashboardData(printers: FiwarePrinter[]): PrinterData[] {
     const meta = PRINTER_META[p.id] || { ip: "-" };
     const material = normalizeMaterial(p.material?.value);
 
+    const realRemainingMinutes =
+      p.remainingTimeMinutes?.value ??
+      p.mc_remaining_time?.value ??
+      p.remain_time?.value ??
+      null;
+
     return {
       id: p.id,
       name: extractPrinterName(p.id),
@@ -88,7 +154,10 @@ export function mapDashboardData(printers: FiwarePrinter[]): PrinterData[] {
       progress: p.progress?.value ?? 0,
 
       jobName: p.jobName?.value || "-",
-      timeRemaining: inferTimeRemaining(p.status?.value, p.progress?.value),
+      timeRemaining: inferTimeRemaining(
+        p.status?.value,
+        realRemainingMinutes
+      ),
       elapsedTime: "-",
 
       nozzleTemp: p.nozzleTemp?.value ?? 0,
