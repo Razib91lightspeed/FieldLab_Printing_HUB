@@ -23,8 +23,20 @@ interface ConfigPrinter {
   serial: string;
   enabled: boolean;
   is_pipeline_healthy?: boolean;
+
+  // These may come from your backend/config health logic.
+  health_message?: string | null;
+  healthMessage?: string | null;
+  last_error?: string | null;
+  lastError?: string | null;
+  error?: string | null;
+  status_message?: string | null;
+  pipeline_status?: string | null;
+
   last_seen?: string;
   last_updated?: string;
+
+  [key: string]: any;
 }
 
 function normalizePrinterKey(value?: string) {
@@ -101,7 +113,71 @@ function buildBookingBadge(booking: any) {
   };
 }
 
+/*
+  This function is intentionally strict.
+
+  It should NOT mark every stale FIWARE printer as Access Code Error.
+  It only returns access-code warning when the config/backend explicitly gives
+  access-code, MQTT, auth, password, or pipeline/access-code style information.
+*/
+function getAccessCodeWarning(printer: ConfigPrinter): string | null {
+  if (!printer.enabled) {
+    return null;
+  }
+
+  const combinedText = [
+    printer.health_message,
+    printer.healthMessage,
+    printer.last_error,
+    printer.lastError,
+    printer.error,
+    printer.status_message,
+    printer.pipeline_status,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  const hasAccessCodeSignal =
+    combinedText.includes('access code') ||
+    combinedText.includes('mqtt') ||
+    combinedText.includes('unauthorized') ||
+    combinedText.includes('authentication') ||
+    combinedText.includes('auth') ||
+    combinedText.includes('password') ||
+    combinedText.includes('wrong code') ||
+    combinedText.includes('code may be wrong') ||
+    combinedText.includes('pipeline / access code');
+
+  const hasPipelineProblem =
+    printer.is_pipeline_healthy === false ||
+    combinedText.includes('pipeline') ||
+    combinedText.includes('not receiving fresh telemetry') ||
+    combinedText.includes('not alive');
+
+  if (hasAccessCodeSignal && hasPipelineProblem) {
+    return 'Access code error: printer MQTT/FIWARE pipeline is not receiving fresh telemetry. Check the current printer access code.';
+  }
+
+  return null;
+}
+
+function isAccessCodeWarning(value?: string | null): boolean {
+  const text = String(value || '').toLowerCase();
+
+  return (
+    text.includes('access code error') ||
+    text.includes('access code') ||
+    text.includes('mqtt') ||
+    text.includes('unauthorized') ||
+    text.includes('authentication') ||
+    text.includes('wrong code')
+  );
+}
+
 function configPrinterToDashboardPrinter(printer: ConfigPrinter): PrinterData {
+  const accessCodeWarning = getAccessCodeWarning(printer);
+
   return {
     id: printer.id,
     name: printer.name,
@@ -127,7 +203,8 @@ function configPrinterToDashboardPrinter(printer: ConfigPrinter): PrinterData {
 
     hasBooking: false,
     bookingTitle: null,
-    bookingWarning: printer.enabled ? 'No FIWARE telemetry' : null,
+    bookingWarning:
+      accessCodeWarning || (printer.enabled ? 'No FIWARE telemetry' : null),
 
     bookingStatusText: 'Free now',
     bookingStatusTone: 'free',
@@ -161,14 +238,35 @@ function mergeConfigWithLiveData(
       return base;
     }
 
+    const accessCodeWarning = isAccessCodeWarning(base.bookingWarning)
+      ? base.bookingWarning
+      : null;
+
+    /*
+      Normal case:
+      Trust live FIWARE data.
+
+      Access-code case:
+      Do NOT trust stale FIWARE status like FAILED/FINISHED.
+      Force the card to show Access Code Error.
+    */
     return {
       ...base,
       ...live,
+
       id: base.id,
       name: base.name,
       ip: base.ip || live.ip,
-      alerts: live.alerts,
-      bookingWarning: live.bookingWarning || null,
+
+      status: accessCodeWarning ? 'error' : live.status,
+
+      alerts: accessCodeWarning
+        ? Math.max(base.alerts || 0, live.alerts || 0, 1)
+        : live.alerts || 0,
+
+      bookingWarning: accessCodeWarning
+        ? accessCodeWarning
+        : live.bookingWarning || null,
     };
   });
 }
@@ -238,8 +336,6 @@ export const FleetView: React.FC<Props> = ({
           bookingStatusTone: bookingBadge.bookingStatusTone,
           bookingPeriodText: bookingBadge.bookingPeriodText,
 
-          // Peppi booking warning should NOT create the red alert circle.
-          // Red alert count should only come from real dashboard/pipeline errors.
           alerts: printer.alerts || 0,
         };
       });
@@ -316,7 +412,7 @@ export const FleetView: React.FC<Props> = ({
       {totalAlerts > 0 && (
         <div className="mb-5 rounded-xl bg-yellow-50 border border-yellow-200 px-4 py-3 text-sm text-yellow-800">
           {totalAlerts} dashboard warning{totalAlerts === 1 ? '' : 's'} detected.
-          Missing FIWARE telemetry is shown as a warning instead of hiding the printer.
+          Some printers may have telemetry, booking, or pipeline warnings.
         </div>
       )}
 

@@ -49,8 +49,40 @@ const getPrinterStatusLabel = (printer: PrinterData): string => {
   const combinedText = `${jobName} ${timeRemaining} ${warning}`;
 
   /*
+    Highest priority:
+    Access code / MQTT pipeline problem.
+    This must be checked before "Stopped" or "Failed",
+    because stale FIWARE may still contain old FAILED status.
+  */
+  if (
+    combinedText.includes('access code') ||
+    combinedText.includes('mqtt') ||
+    combinedText.includes('unauthorized') ||
+    combinedText.includes('auth') ||
+    combinedText.includes('password') ||
+    combinedText.includes('pipeline') ||
+    combinedText.includes('old telemetry') ||
+    combinedText.includes('stale') ||
+    combinedText.includes('not receiving fresh telemetry')
+  ) {
+    return 'Access Code Error';
+  }
+
+  /*
+    Telemetry / FIWARE / backend problem.
+  */
+  if (
+    combinedText.includes('no live fiware') ||
+    combinedText.includes('no fiware') ||
+    combinedText.includes('fiware') ||
+    combinedText.includes('telemetry') ||
+    combinedText.includes('backend unavailable')
+  ) {
+    return 'Telemetry Missing';
+  }
+
+  /*
     Normal states.
-    Finished will stay green because printer.status === 'finished'.
   */
   if (printer.status !== 'error') {
     switch (printer.status) {
@@ -69,48 +101,14 @@ const getPrinterStatusLabel = (printer: PrinterData): string => {
   }
 
   /*
-    Telemetry / FIWARE / backend problems.
-    These are not real print failures.
-  */
-  if (
-    combinedText.includes('no live fiware') ||
-    combinedText.includes('pipeline stale') ||
-    combinedText.includes('no fiware') ||
-    combinedText.includes('fiware') ||
-    combinedText.includes('telemetry') ||
-    combinedText.includes('backend unavailable')
-  ) {
-    return 'Telemetry Missing';
-  }
-
-  /*
-    Connection / access-code / MQTT problems.
-    These are also not real print failures.
-  */
-  if (
-    combinedText.includes('access code') ||
-    combinedText.includes('mqtt') ||
-    combinedText.includes('connection') ||
-    combinedText.includes('connect') ||
-    combinedText.includes('unreachable') ||
-    combinedText.includes('offline')
-  ) {
-    return 'Connection Issue';
-  }
-
-  /*
     Paused state.
   */
-  if (
-    combinedText.includes('paused') ||
-    combinedText.includes('pause')
-  ) {
+  if (combinedText.includes('paused') || combinedText.includes('pause')) {
     return 'Paused';
   }
 
   /*
-    Real failure indicators.
-    These should show Failed because something went wrong physically/materially.
+    Real hardware/material failure.
   */
   if (
     combinedText.includes('filament runout') ||
@@ -139,9 +137,7 @@ const getPrinterStatusLabel = (printer: PrinterData): string => {
   }
 
   /*
-    Manual/user stop indicators.
-    If someone presses Stop on the physical printer, Bambu may still report it as Failed.
-    So these cases should show Stopped on the dashboard.
+    Manual stop / cancel.
   */
   if (
     combinedText.includes('stopped') ||
@@ -163,19 +159,12 @@ const getPrinterStatusLabel = (printer: PrinterData): string => {
   }
 
   /*
-    Important:
-    If the only text we receive is plain "Failed", we show Stopped.
-    This matches your real case: pressing Stop on the physical printer appears as Failed/Error.
-    Real machine failures should be caught above by specific failure keywords.
+    Plain FAILED from Bambu after pressing physical Stop.
   */
   if (combinedText.includes('failed')) {
     return 'Stopped';
   }
 
-  /*
-    If progress is halfway and printer becomes error, but no real failure reason exists,
-    assume it was manually stopped.
-  */
   if (printer.progress > 0 && printer.progress < 100) {
     return 'Stopped';
   }
@@ -198,9 +187,7 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
           : 'border-lab-accent hover:border-lab-secondary'
       }`}
     >
-      {/* Card Header */}
       <div className="flex justify-between items-start mb-4 gap-3">
-        {/* Left side: icon, name, status */}
         <div className="flex items-start gap-3 min-w-0 flex-1">
           <div
             className={`p-2 rounded-lg shrink-0 ${
@@ -217,13 +204,12 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
               {printer.name}
             </h3>
 
-            <div className="mt-1 max-w-[155px]">
+            <div className="mt-1 max-w-[170px]">
               <StatusBadge status={printer.status} label={statusLabel} />
             </div>
           </div>
         </div>
 
-        {/* Right side: booking badge + alert badge */}
         <div className="flex flex-col items-end gap-2 shrink-0 max-w-[175px]">
           {printer.bookingStatusText && (
             <div
@@ -255,7 +241,6 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
         </div>
       </div>
 
-      {/* Booking warning */}
       {showBookingWarning && (
         <div className="mb-4 flex items-start gap-2 rounded-lg bg-yellow-50 border border-yellow-200 px-3 py-2 text-yellow-800 animate-pulse">
           <AlertTriangle size={16} className="shrink-0 mt-0.5" />
@@ -265,7 +250,6 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
         </div>
       )}
 
-      {/* Progress and printer data */}
       <div className="space-y-4">
         <div>
           <div className="flex justify-between text-sm mb-1">
