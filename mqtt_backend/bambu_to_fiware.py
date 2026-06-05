@@ -77,18 +77,23 @@ def normalize_string(value, default="Unknown"):
 def build_attrs(
     printer_name,
     progress,
+    remaining_time_minutes,
     status,
     job_name,
     nozzle_temp,
     bed_temp,
     material,
     color,
+    include_name=True,
 ):
     observed_at = now_iso()
 
-    return {
-        "name": make_property(printer_name, observed_at),
+    attrs = {
         "progress": make_property(normalize_int(progress), observed_at),
+        "remainingTimeMinutes": make_property(
+            normalize_int(remaining_time_minutes),
+            observed_at,
+        ),
         "status": make_property(normalize_string(status), observed_at),
         "jobName": make_property(normalize_string(job_name, "-"), observed_at),
         "nozzleTemp": make_property(normalize_number(nozzle_temp), observed_at),
@@ -100,10 +105,16 @@ def build_attrs(
         "@context": [NGSI_CONTEXT],
     }
 
+    if include_name:
+        attrs["name"] = make_property(printer_name, observed_at)
+
+    return attrs
+
 
 def build_entity(
     printer_name,
     progress,
+    remaining_time_minutes,
     status,
     job_name,
     nozzle_temp,
@@ -116,12 +127,14 @@ def build_entity(
     attrs = build_attrs(
         printer_name,
         progress,
+        remaining_time_minutes,
         status,
         job_name,
         nozzle_temp,
         bed_temp,
         material,
         color,
+        include_name=True,
     )
 
     return {
@@ -157,9 +170,23 @@ def http_request(method, url, payload=None):
         return 0, str(error)
 
 
+def is_partial_fiware_success(body):
+    try:
+        parsed = json.loads(body)
+    except Exception:
+        return '"lastSeen"' in body
+
+    updated = parsed.get("updated", [])
+    if not isinstance(updated, list):
+        return False
+
+    return "lastSeen" in updated
+
+
 def create_printer_entity(
     printer_name,
     progress,
+    remaining_time_minutes,
     status,
     job_name,
     nozzle_temp,
@@ -170,6 +197,7 @@ def create_printer_entity(
     entity = build_entity(
         printer_name,
         progress,
+        remaining_time_minutes,
         status,
         job_name,
         nozzle_temp,
@@ -196,6 +224,7 @@ def create_printer_entity(
 def patch_printer_entity(
     printer_name,
     progress,
+    remaining_time_minutes,
     status,
     job_name,
     nozzle_temp,
@@ -209,12 +238,14 @@ def patch_printer_entity(
     attrs = build_attrs(
         printer_name,
         progress,
+        remaining_time_minutes,
         status,
         job_name,
         nozzle_temp,
         bed_temp,
         material,
         color,
+        include_name=False,
     )
 
     url = f"{ORION_BASE_URL}/entities/{encoded_id}/attrs"
@@ -224,11 +255,16 @@ def patch_printer_entity(
         print(f"[FIWARE] Updated {printer_name}")
         return True
 
+    if status_code == 207 and is_partial_fiware_success(body):
+        print(f"[FIWARE] Updated {printer_name} with partial FIWARE response")
+        return True
+
     if status_code == 404:
         print(f"[FIWARE] Entity missing for {printer_name}; creating it now")
         created = create_printer_entity(
             printer_name,
             progress,
+            remaining_time_minutes,
             status,
             job_name,
             nozzle_temp,
@@ -246,6 +282,13 @@ def patch_printer_entity(
             print(f"[FIWARE] Updated {printer_name} after create retry")
             return True
 
+        if retry_status_code == 207 and is_partial_fiware_success(retry_body):
+            print(
+                f"[FIWARE] Updated {printer_name} after create retry "
+                f"with partial FIWARE response"
+            )
+            return True
+
         print(
             f"[FIWARE] Update retry failed for {printer_name}: "
             f"{retry_status_code} {retry_body}"
@@ -256,11 +299,7 @@ def patch_printer_entity(
     return False
 
 
-def update_local_health(printer_name, success):
-    """
-    Keep the local printers.json health fields aligned with the bridge result.
-    Access codes are preserved. Only health timestamps are touched.
-    """
+def update_local_health(printer_name, success, message=None):
     try:
         if not PRINTERS_FILE.exists():
             return
@@ -278,6 +317,19 @@ def update_local_health(printer_name, success):
 
                     if success:
                         printer["last_seen"] = timestamp
+                        printer["health_message"] = (
+                            "Fresh MQTT/FIWARE telemetry received"
+                        )
+                        printer["last_error"] = None
+                        printer["last_error_at"] = None
+                    else:
+                        printer["health_message"] = (
+                            message or "MQTT/FIWARE pipeline failed"
+                        )
+                        printer["last_error"] = (
+                            message or "MQTT/FIWARE pipeline failed"
+                        )
+                        printer["last_error_at"] = timestamp
 
                     changed = True
                     break
@@ -299,6 +351,7 @@ def update_local_health(printer_name, success):
 def update_printer(
     printer_name,
     progress,
+    remaining_time_minutes,
     status,
     job_name,
     nozzle_temp,
@@ -309,6 +362,7 @@ def update_printer(
     success = patch_printer_entity(
         printer_name,
         progress,
+        remaining_time_minutes,
         status,
         job_name,
         nozzle_temp,
@@ -317,6 +371,17 @@ def update_printer(
         color,
     )
 
-    update_local_health(printer_name, success)
+    if success:
+        update_local_health(
+            printer_name,
+            True,
+            "Fresh MQTT/FIWARE telemetry received",
+        )
+    else:
+        update_local_health(
+            printer_name,
+            False,
+            "FIWARE update failed after MQTT data was received",
+        )
 
     return success

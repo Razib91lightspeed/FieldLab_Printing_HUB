@@ -20,11 +20,117 @@ MIN_FIWARE_UPDATE_INTERVAL_SECONDS = 1
 CONFIG_RECHECK_SECONDS = 2
 CONNECT_RETRY_SECONDS = 3
 
+# When the user presses Stop on the printer, Bambu first sends:
+#   command = "stop", reason = "SUCCESS"
+# and shortly after it may report:
+#   gcode_state = "FAILED"
+#
+# That final FAILED is not always a machine failure. If it happens shortly
+# after a successful stop command, we classify it as STOPPED_BY_USER.
+USER_STOP_COMMAND_MEMORY_SECONDS = 30
+
+# Once a user stop is confirmed, later Bambu packets may continue saying
+# gcode_state="FAILED". Keep showing STOPPED_BY_USER for the same job
+# instead of letting later FAILED packets overwrite the dashboard.
+USER_STOPPED_STATE_MEMORY_SECONDS = 30 * 60
+
 _stop_event = threading.Event()
 
 
 def now_seconds():
     return time.time()
+
+def get_print_data(payload):
+    """
+    Bambu MQTT sometimes wraps printer state inside payload["print"].
+    Other packets put fields directly at the root.
+    """
+    if isinstance(payload, dict) and isinstance(payload.get("print"), dict):
+        return payload["print"]
+
+    if isinstance(payload, dict):
+        return payload
+
+    return {}
+
+
+def clean_text(value):
+    return str(value or "").strip()
+
+
+def get_payload_command(payload):
+    """
+    Command acknowledgement packets look like:
+      {"command": "stop", "reason": "SUCCESS"}
+
+    They are not full printer telemetry and usually do not contain gcode_state.
+    """
+    print_data = get_print_data(payload)
+
+    return clean_text(
+        print_data.get("command") or payload.get("command")
+    ).lower()
+
+
+def get_payload_reason(payload):
+    print_data = get_print_data(payload)
+
+    return clean_text(
+        print_data.get("reason") or payload.get("reason")
+    ).upper()
+
+
+def is_success_reason(reason):
+    return clean_text(reason).upper() in ["SUCCESS", "OK", "0"]
+
+
+def payload_has_real_printer_state(payload):
+    """
+    True only when the payload contains a real printer status field.
+
+    We intentionally do not treat the numeric "state" field alone as enough,
+    because command-only acknowledgements can otherwise become UNKNOWN/idle-like
+    updates and overwrite the useful previous FIWARE state.
+    """
+    print_data = get_print_data(payload)
+
+    real_status_keys = [
+        "gcode_state",
+        "status",
+        "print_status",
+        "printStatus",
+    ]
+
+    for key in real_status_keys:
+        value = clean_text(print_data.get(key))
+
+        if value:
+            return True
+
+    return False
+
+
+def is_command_only_payload(payload):
+    """
+    Command-only packets should be observed for control context,
+    but they should not be sent to FIWARE as printer telemetry.
+
+    Examples:
+      command=stop, reason=SUCCESS
+      command=pause, reason=SUCCESS
+      command=resume, reason=SUCCESS
+      command=gcode_line, reason=SUCCESS
+    """
+    command = get_payload_command(payload)
+
+    return bool(command) and not payload_has_real_printer_state(payload)
+
+
+def is_recent_user_stop(last_user_stop_at):
+    if not last_user_stop_at:
+        return False
+
+    return now_seconds() - last_user_stop_at <= USER_STOP_COMMAND_MEMORY_SECONDS
 
 
 def read_config():
@@ -133,6 +239,26 @@ def printer_signature(printer):
         printer.get("serial"),
         printer.get("enabled"),
     )
+
+
+
+def is_real_material_value(value):
+    text = str(value or "").strip().lower()
+    return bool(text) and text not in ["unknown", "-", "none", "null", ""]
+
+
+def is_real_color_value(value):
+    text = str(value or "").strip().upper()
+    return bool(text) and text not in [
+        "#000000",
+        "000000",
+        "00000000",
+        "-",
+        "UNKNOWN",
+        "NONE",
+        "NULL",
+        "",
+    ]
 
 
 def get_reason_code_value(reason_code):
@@ -277,82 +403,39 @@ def get_tray_id(tray):
 
 
 def get_active_tray_id(print_data):
-    """
-    Find the active filament tray from Bambu MQTT payload.
+    tray_now = first_existing(print_data, ["tray_now", "trayNow"])
+    tray_tar = first_existing(print_data, ["tray_tar", "trayTar", "tray_target"])
 
-    Important:
-    For AMS printers, tray_now/tray_tar are usually inside print_data["ams"],
-    not directly inside print_data.
-
-    Example:
-      print.ams.tray_now = "2"
-      print.ams.tray_tar = "2"
-
-    That means active AMS tray is tray id 2.
-    """
-
-    def clean_tray_id(value):
+    for value in [tray_now, tray_tar]:
         if value is None:
-            return None
+            continue
 
         text = str(value).strip()
 
-        if not text:
-            return None
+        if text and text not in ["-1", "254", "255"]:
+            return text
 
-        # Bambu uses 255 / 254 for virtual/no tray, not a real AMS tray.
-        if text in ["255", "254", "-1", "unknown", "Unknown", "None", "null"]:
-            return None
+    for value in [tray_now, tray_tar]:
+        if value is None:
+            continue
 
-        return text
+        text = str(value).strip()
 
-    ams_data = print_data.get("ams")
+        if text:
+            return text
 
-    # 1. Correct location for AMS printers: print.ams.tray_now / print.ams.tray_tar
-    if isinstance(ams_data, dict):
-        for key in ["tray_now", "tray_tar", "tray_pre"]:
-            tray_id = clean_tray_id(ams_data.get(key))
-            if tray_id is not None:
-                return tray_id
-
-    # 2. Fallback: sometimes Bambu may expose it directly under print
-    for key in [
-        "tray_now",
-        "tray_tar",
-        "tray_pre",
-        "tray_info_idx",
-        "curr_tray",
-        "current_tray",
-        "active_tray",
-    ]:
-        tray_id = clean_tray_id(print_data.get(key))
-        if tray_id is not None:
-            return tray_id
-
-    # 3. Fallback: virtual tray, but ignore 255/254
-    vt_tray = print_data.get("vt_tray") or print_data.get("vtTray")
-    if isinstance(vt_tray, dict):
-        tray_id = clean_tray_id(vt_tray.get("id"))
-        if tray_id is not None:
-            return tray_id
-
-    return None
+    return ""
 
 
 def extract_material_and_color(print_data):
     """
-    MQTT-only material/color resolver.
+    Correct AMS material/color resolver.
 
-    No hardcoded per-printer material.
-    No manual material_cache.json.
-    Source of truth is only the Bambu MQTT payload.
-
-    It tries, in order:
-    1. Direct print fields
-    2. Virtual tray fields, often used when there is no AMS
-    3. Active AMS tray if tray id is available
-    4. Any valid AMS tray
-    5. Recursive scan of MQTT payload for material/color-like fields
+    Production rule:
+    - For AMS printers, ams.tray_now / ams.tray_tar is the source of truth.
+    - tray_now is treated as AMS tray index/id.
+    - Do not guess tray 0 when active tray exists.
+    - Do not use hardcoded cache.
     """
 
     known_materials = [
@@ -384,16 +467,15 @@ def extract_material_and_color(print_data):
         if upper in ["UNKNOWN", "NONE", "NULL", "-", ""]:
             return None
 
-        for material in known_materials:
-            mat_upper = material.upper().replace(" ", "")
+        for material_name in known_materials:
+            mat_upper = material_name.upper().replace(" ", "")
             if upper == mat_upper or upper.startswith(mat_upper + "-"):
-                return material
+                return material_name
 
-        # Some Bambu values can be descriptive, e.g. "Bambu PLA Basic"
-        for material in known_materials:
-            mat_upper = material.upper().replace(" ", "")
+        for material_name in known_materials:
+            mat_upper = material_name.upper().replace(" ", "")
             if mat_upper in upper:
-                return material
+                return material_name
 
         return None
 
@@ -422,18 +504,18 @@ def extract_material_and_color(print_data):
         if not isinstance(obj, dict):
             return None
 
-        keys = [
+        for key in [
             "tray_type",
             "trayType",
             "filament_type",
             "filamentType",
             "filament_name",
             "filamentName",
+            "tray_name",
+            "trayName",
             "material",
             "type",
-        ]
-
-        for key in keys:
+        ]:
             material = normalize_material(obj.get(key))
             if material:
                 return material
@@ -444,7 +526,7 @@ def extract_material_and_color(print_data):
         if not isinstance(obj, dict):
             return None
 
-        keys = [
+        for key in [
             "tray_color",
             "trayColor",
             "tray_rgba",
@@ -452,73 +534,102 @@ def extract_material_and_color(print_data):
             "filament_color",
             "filamentColor",
             "color",
-        ]
-
-        for key in keys:
+            "colour",
+        ]:
             color = normalize_color(obj.get(key))
             if color:
                 return color
 
         return None
 
-    def scan_payload_for_material_and_color(obj):
-        material_found = None
-        color_found = None
+    def clean_active_tray(value):
+        if value is None:
+            return None
 
-        def walk(value, path=""):
-            nonlocal material_found, color_found
+        text = str(value).strip()
 
-            if material_found and color_found:
-                return
+        if not text:
+            return None
 
-            if isinstance(value, dict):
-                for key, child in value.items():
-                    child_path = f"{path}.{key}".lower()
+        # 254/255 are Bambu virtual/no-tray values, not real AMS tray indexes.
+        if text in ["254", "255", "-1", "unknown", "Unknown", "None", "null"]:
+            return None
 
-                    if isinstance(child, (str, int, float)):
-                        if material_found is None and any(
-                            token in child_path
-                            for token in [
-                                "material",
-                                "filament",
-                                "tray_type",
-                                "traytype",
-                                "filament_type",
-                                "filamenttype",
-                            ]
-                        ):
-                            material = normalize_material(child)
-                            if material:
-                                material_found = material
+        return text
 
-                        if color_found is None and any(
-                            token in child_path
-                            for token in [
-                                "color",
-                                "rgba",
-                            ]
-                        ):
-                            color = normalize_color(child)
-                            if color:
-                                color_found = color
-                    else:
-                        walk(child, child_path)
+    def get_ams_active_tray_raw():
+        ams_data = print_data.get("ams")
 
-            elif isinstance(value, list):
-                for index, child in enumerate(value):
-                    walk(child, f"{path}[{index}]")
+        if isinstance(ams_data, dict):
+            for key in ["tray_now", "tray_tar", "tray_pre", "active_tray"]:
+                active = clean_active_tray(ams_data.get(key))
+                if active is not None:
+                    return active
 
-        walk(obj)
-        return material_found, color_found
+        for key in ["tray_now", "tray_tar", "tray_pre", "active_tray"]:
+            active = clean_active_tray(print_data.get(key))
+            if active is not None:
+                return active
 
-    material = None
-    color = None
+        return None
 
-    # 1. Direct fields from print payload
+    def select_active_ams_tray(trays, active_raw):
+        if not trays or active_raw is None:
+            return None
+
+        active_text = str(active_raw).strip()
+
+        # First try matching by real tray id field.
+        for tray in trays:
+            if str(get_tray_id(tray)).strip() == active_text:
+                return tray
+
+        # Then treat active tray as list index.
+        try:
+            index = int(active_text)
+            if 0 <= index < len(trays):
+                return trays[index]
+        except Exception:
+            pass
+
+        return None
+
+    ams_data = print_data.get("ams")
+    trays = collect_ams_trays(ams_data)
+    active_raw = get_ams_active_tray_raw()
+    selected_tray = select_active_ams_tray(trays, active_raw)
+
+    # AMS case: active tray is source of truth.
+    if selected_tray:
+        material = material_from_object(selected_tray) or "Unknown"
+        color = color_from_object(selected_tray) or "#000000"
+
+        print(
+            "[DEBUG] ACTIVE AMS selected -> "
+            f"active={active_raw} | "
+            f"tray_count={len(trays)} | "
+            f"tray_id={get_tray_id(selected_tray)} | "
+            f"type={material} | "
+            f"color={color.replace('#', '')}"
+        )
+
+        return material, color
+
+    # If AMS exists but active tray was not selectable, do not guess tray 0.
+    if trays:
+        print(
+            "[DEBUG] AMS present but active tray not selectable -> "
+            f"active={active_raw or 'unknown'} | "
+            f"tray_count={len(trays)} | "
+            "type=Unknown | color=000000"
+        )
+
+        return "Unknown", "#000000"
+
+    # Non-AMS fallback: direct/virtual tray fields.
     material = material_from_object(print_data)
     color = color_from_object(print_data)
 
-    # 2. Virtual tray, common when printer is not using AMS
     vt_tray = (
         print_data.get("vt_tray")
         or print_data.get("vtTray")
@@ -541,48 +652,11 @@ def extract_material_and_color(print_data):
             if material and color:
                 break
 
-    # 3. AMS tray data
-    active_tray_id = get_active_tray_id(print_data)
-    trays = collect_ams_trays(print_data.get("ams"))
-
-    selected_tray = None
-
-    if active_tray_id:
-        for tray in trays:
-            if get_tray_id(tray) == active_tray_id:
-                selected_tray = tray
-                break
-
-    if selected_tray:
-        material = material or material_from_object(selected_tray)
-        color = color or color_from_object(selected_tray)
-
-    # 4. If no active tray id, use any tray that has valid material/color
-    if (not material or not color) and trays:
-        for tray in trays:
-            if not isinstance(tray, dict):
-                continue
-
-            material = material or material_from_object(tray)
-            color = color or color_from_object(tray)
-
-            if material and color:
-                break
-
-    # 5. Last MQTT-only fallback: recursively scan whole print payload
-    if not material or not color:
-        scanned_material, scanned_color = scan_payload_for_material_and_color(print_data)
-        material = material or scanned_material
-        color = color or scanned_color
-
     final_material = material or "Unknown"
     final_color = color or "#000000"
 
     print(
-        "[DEBUG] Active tray -> "
-        f"tray_now={print_data.get('tray_now')} | "
-        f"tray_tar={print_data.get('tray_tar')} | "
-        f"id={active_tray_id or 'unknown'} | "
+        "[DEBUG] Non-AMS material -> "
         f"type={final_material} | "
         f"color={final_color.replace('#', '')}"
     )
@@ -605,6 +679,18 @@ def extract_print_fields(payload):
                 "print_percent",
                 "printPercentage",
                 "percent",
+            ],
+            0,
+        )
+    )
+    remaining_time_minutes = normalize_int(
+        first_existing(
+            print_data,
+            [
+                "mc_remaining_time",
+                "remain_time",
+                "remaining_time",
+                "time_remaining",
             ],
             0,
         )
@@ -673,6 +759,7 @@ def extract_print_fields(payload):
 
     return {
         "progress": progress,
+        "remaining_time_minutes": remaining_time_minutes,
         "status": status,
         "job_name": job_name,
         "nozzle_temp": nozzle_temp,
@@ -694,6 +781,30 @@ class PrinterMqttWorker:
         self.connected = False
         self.last_fiware_update = 0
         self.last_payload_signature = None
+
+        # Remembers the moment when Bambu confirms command="stop".
+        # If a FAILED state arrives soon after, we classify it as
+        # STOPPED_BY_USER instead of machine failure.
+        self.last_user_stop_at = 0
+
+        # Persistent classification memory:
+        # After command="stop" SUCCESS, the first FAILED is converted to
+        # STOPPED_BY_USER. Bambu may continue sending FAILED afterwards.
+        # These fields prevent later FAILED packets for the same job from
+        # overwriting STOPPED_BY_USER.
+        self.user_stopped_job_name = None
+        self.user_stopped_until = 0
+
+        # Sticky user-stop state:
+        # Once a job is classified as STOPPED_BY_USER, keep that status for
+        # later FAILED packets of the same job. Clear only when a real new
+        # active state/job starts.
+        self.user_stop_active = False
+
+        self.last_good_material = None
+        self.last_good_color = None
+        self.last_known_material = None
+        self.last_known_color = None
         self.client = None
 
     def build_client(self):
@@ -752,10 +863,152 @@ class PrinterMqttWorker:
             update_local_health(self.name, False, error_message)
             return
 
+        # ------------------------------------------------------------
+        # Command acknowledgement handling
+        # ------------------------------------------------------------
+        # Bambu sends command-only packets such as:
+        #   command="stop", reason="SUCCESS"
+        # These packets are useful context, but they are not full telemetry.
+        # Do not let them overwrite FIWARE with UNKNOWN.
+        command_name = get_payload_command(payload)
+        command_reason = get_payload_reason(payload)
+
+        if command_name == "stop" and is_success_reason(command_reason):
+            self.last_user_stop_at = now_seconds()
+            print(
+                f"[{self.name}] User stop command confirmed by printer; "
+                "waiting for final printer state"
+            )
+
+        if is_command_only_payload(payload):
+            print(
+                f"[{self.name}] Ignoring command-only MQTT packet "
+                f"command={command_name!r} reason={command_reason!r}; "
+                "not updating FIWARE"
+            )
+            return
+
         fields = extract_print_fields(payload)
+
+        # ------------------------------------------------------------
+        # User-stop classification
+        # ------------------------------------------------------------
+        # After a physical/user Stop, Bambu may report gcode_state=FAILED.
+        # If that FAILED arrives soon after command=stop SUCCESS, classify it
+        # as STOPPED_BY_USER so the dashboard does not show a false machine
+        # failure.
+        # ------------------------------------------------------------
+        # Persistent user-stop classification
+        # ------------------------------------------------------------
+        # Bambu reports a user stop as:
+        #   command="stop", reason="SUCCESS"
+        # followed by:
+        #   gcode_state="FAILED"
+        #
+        # Important:
+        # After that, Bambu may continue sending FAILED packets for the same
+        # job. Those later packets must NOT overwrite STOPPED_BY_USER.
+        #
+        # Long-term state-machine rule:
+        # - First FAILED after confirmed stop command => STOPPED_BY_USER
+        # - Later FAILED for same job while user_stop_active => STOPPED_BY_USER
+        # - Clear user_stop_active only when a real new active/clean state starts.
+        status_upper = str(fields.get("status") or "").upper()
+        job_name = str(fields.get("job_name") or "")
+
+        stopped_by_recent_command = (
+            status_upper == "FAILED"
+            and is_recent_user_stop(self.last_user_stop_at)
+        )
+
+        stopped_by_existing_memory = (
+            status_upper == "FAILED"
+            and self.user_stop_active
+            and self.user_stopped_job_name
+            and self.user_stopped_job_name == job_name
+        )
+
+        if stopped_by_recent_command or stopped_by_existing_memory:
+            if stopped_by_recent_command:
+                self.user_stop_active = True
+                self.user_stopped_job_name = job_name
+                self.user_stopped_until = 0
+                self.last_user_stop_at = 0
+
+                print(
+                    f"[{self.name}] Reclassifying FAILED as STOPPED_BY_USER "
+                    "because a recent user stop command was confirmed"
+                )
+            else:
+                print(
+                    f"[{self.name}] Keeping STOPPED_BY_USER for same stopped job "
+                    f"{job_name!r}"
+                )
+
+            fields["status"] = "STOPPED_BY_USER"
+
+        elif status_upper in ["RUNNING", "PRINTING", "PAUSE", "PAUSED", "FINISH", "FINISHED"]:
+            # Clear old stopped-by-user memory only when the printer enters a
+            # real non-failed state and we are not inside the immediate stop
+            # transition window.
+            if not is_recent_user_stop(self.last_user_stop_at):
+                if self.user_stop_active:
+                    print(
+                        f"[{self.name}] Clearing STOPPED_BY_USER memory because "
+                        f"printer entered {status_upper}"
+                    )
+
+                self.user_stop_active = False
+                self.user_stopped_job_name = None
+                self.user_stopped_until = 0
+
+        # AMS MEMORY SAFETY:
+        # Some Bambu packets are partial. If a later packet lacks material/color,
+        # keep the last real MQTT-derived material/color instead of overwriting FIWARE
+        # with Unknown/#000000.
+        if is_real_material_value(fields.get("material")):
+            self.last_good_material = fields["material"]
+        elif self.last_good_material:
+            print(
+                f"[AMS MEMORY] {self.name}: keeping material "
+                f"{self.last_good_material}"
+            )
+            fields["material"] = self.last_good_material
+
+        if is_real_color_value(fields.get("color")):
+            self.last_good_color = fields["color"]
+        elif self.last_good_color:
+            print(
+                f"[AMS MEMORY] {self.name}: keeping color "
+                f"{self.last_good_color}"
+            )
+            fields["color"] = self.last_good_color
+
+
+        # Some Bambu MQTT packets are partial and may omit active AMS tray info.
+        # If that happens, do not overwrite the correct active tray color with tray 0.
+        # Keep the last material/color that was actually derived from MQTT.
+        if is_known_material(fields.get("material")):
+            self.last_known_material = fields["material"]
+        elif self.last_known_material:
+            print(
+                f"[MQTT MEMORY] {self.name}: keeping last material "
+                f"{self.last_known_material}"
+            )
+            fields["material"] = self.last_known_material
+
+        if is_known_color(fields.get("color")):
+            self.last_known_color = fields["color"]
+        elif self.last_known_color:
+            print(
+                f"[MQTT MEMORY] {self.name}: keeping last color "
+                f"{self.last_known_color}"
+            )
+            fields["color"] = self.last_known_color
 
         payload_signature = (
             fields["progress"],
+            fields["remaining_time_minutes"],
             fields["status"],
             fields["job_name"],
             fields["nozzle_temp"],
@@ -779,6 +1032,7 @@ class PrinterMqttWorker:
         print(
             f"[{self.name}] "
             f"{fields['progress']}% | "
+ 	    f"{fields['remaining_time_minutes']} min left | "
             f"{fields['status']} | "
             f"Job: {fields['job_name']} | "
             f"Material: {fields['material']} | "
@@ -788,6 +1042,7 @@ class PrinterMqttWorker:
         update_printer(
             self.name,
             fields["progress"],
+	    fields["remaining_time_minutes"],
             fields["status"],
             fields["job_name"],
             fields["nozzle_temp"],
