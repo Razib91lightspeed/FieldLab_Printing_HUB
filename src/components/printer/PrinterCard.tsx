@@ -41,135 +41,198 @@ const getBookingBadgeClasses = (
   return 'bg-gray-50 text-gray-600 border border-gray-200';
 };
 
-const getPrinterStatusLabel = (printer: PrinterData): string => {
+const getFailureDetailLabel = (printer: PrinterData): string | null => {
   const jobName = String(printer.jobName || '').toLowerCase();
   const timeRemaining = String(printer.timeRemaining || '').toLowerCase();
   const warning = String(printer.bookingWarning || '').toLowerCase();
+  const rawStatus = String(printer.rawStatus || '').toLowerCase();
+  const material = String(printer.material || '').toLowerCase();
+  const printError = String(printer.printError || '').toLowerCase();
+  const failReason = String(printer.failReason || '').toLowerCase();
 
-  const combinedText = `${jobName} ${timeRemaining} ${warning}`;
+  const combinedText = `
+    ${jobName}
+    ${timeRemaining}
+    ${warning}
+    ${rawStatus}
+    ${material}
+    ${printError}
+    ${failReason}
+  `.toLowerCase();
+
+  if (
+    combinedText.includes('filament runout') ||
+    combinedText.includes('filament error') ||
+    combinedText.includes('filament stuck') ||
+    combinedText.includes('filament jam')
+  ) {
+    return 'Filament issue';
+  }
+
+  if (
+    combinedText.includes('nozzle') ||
+    combinedText.includes('clog') ||
+    combinedText.includes('jam') ||
+    combinedText.includes('extruder')
+  ) {
+    return 'Nozzle/extruder issue';
+  }
+
+  if (
+    combinedText.includes('spaghetti') ||
+    combinedText.includes('bed adhesion') ||
+    combinedText.includes('adhesion')
+  ) {
+    return 'Bed adhesion issue';
+  }
+
+  if (
+    combinedText.includes('thermal') ||
+    combinedText.includes('temperature') ||
+    combinedText.includes('overheat') ||
+    combinedText.includes('heatbed')
+  ) {
+    return 'Temperature issue';
+  }
+
+  if (combinedText.includes('ams error')) {
+    return 'AMS issue';
+  }
+
+  if (
+    combinedText.includes('sensor error') ||
+    combinedText.includes('sensor')
+  ) {
+    return 'Sensor issue';
+  }
+
+  if (
+    combinedText.includes('motor') ||
+    combinedText.includes('fan error') ||
+    combinedText.includes('hardware') ||
+    combinedText.includes('hms')
+  ) {
+    return 'Hardware issue';
+  }
+
+  return null;
+};
+
+const getPrinterStatusLabel = (printer: PrinterData): string => {
+  const warning = String(printer.bookingWarning || '').toLowerCase();
 
   /*
     Highest priority:
-    Access code / MQTT pipeline problem.
-    This must be checked before "Stopped" or "Failed",
-    because stale FIWARE may still contain old FAILED status.
+    Real access-code authentication problem.
+    This should come from backend/FleetView warning, not from generic MQTT text.
   */
-  if (
-    combinedText.includes('access code') ||
-    combinedText.includes('mqtt') ||
-    combinedText.includes('unauthorized') ||
-    combinedText.includes('auth') ||
-    combinedText.includes('password') ||
-    combinedText.includes('pipeline') ||
-    combinedText.includes('old telemetry') ||
-    combinedText.includes('stale') ||
-    combinedText.includes('not receiving fresh telemetry')
-  ) {
+  const isAccessCodeProblem =
+    warning.includes('access code error') ||
+    warning.includes('mqtt authentication failed') ||
+    warning.includes('wrong access code') ||
+    warning.includes('invalid access code') ||
+    warning.includes('access code invalid') ||
+    warning.includes('unauthorized') ||
+    warning.includes('not authorized') ||
+    warning.includes('authentication failed');
+
+  if (isAccessCodeProblem) {
     return 'Access Code Error';
   }
 
   /*
     Telemetry / FIWARE / backend problem.
   */
-  if (
-    combinedText.includes('no live fiware') ||
-    combinedText.includes('no fiware') ||
-    combinedText.includes('fiware') ||
-    combinedText.includes('telemetry') ||
-    combinedText.includes('backend unavailable')
-  ) {
+  const isTelemetryProblem =
+    warning.includes('no live fiware') ||
+    warning.includes('no fiware telemetry') ||
+    warning.includes('dashboard backend unavailable') ||
+    warning.includes('telemetry missing') ||
+    warning.includes('telemetry stale') ||
+    warning.includes('pipeline stale');
+
+  if (isTelemetryProblem) {
     return 'Telemetry Missing';
   }
 
   /*
-    Normal states.
+    Structured printer state.
+    This is the long-term logic:
+    PAUSE / FAILED / STOPPED_BY_USER should come from mapDashboardData,
+    not from guessing jobName/timeRemaining text.
   */
-  if (printer.status !== 'error') {
-    switch (printer.status) {
-      case 'printing':
-        return 'Printing';
+  if (printer.statusReason === 'failed') {
+    const failureDetail = getFailureDetailLabel(printer);
 
-      case 'finished':
-        return 'Finished';
-
-      case 'idle':
-        return 'Idle';
-
-      default:
-        return 'Error';
-    }
+    return failureDetail
+      ? `Failed printing: ${failureDetail}`
+      : 'Failed printing';
   }
 
-  /*
-    Paused state.
-  */
-  if (combinedText.includes('paused') || combinedText.includes('pause')) {
+  if (printer.statusReason === 'paused') {
     return 'Paused';
   }
 
-  /*
-    Real hardware/material failure.
-  */
-  if (
-    combinedText.includes('filament runout') ||
-    combinedText.includes('filament error') ||
-    combinedText.includes('filament stuck') ||
-    combinedText.includes('filament jam') ||
-    combinedText.includes('nozzle') ||
-    combinedText.includes('clog') ||
-    combinedText.includes('jam') ||
-    combinedText.includes('spaghetti') ||
-    combinedText.includes('bed adhesion') ||
-    combinedText.includes('adhesion') ||
-    combinedText.includes('thermal') ||
-    combinedText.includes('temperature') ||
-    combinedText.includes('overheat') ||
-    combinedText.includes('hms') ||
-    combinedText.includes('hardware') ||
-    combinedText.includes('sensor error') ||
-    combinedText.includes('motor') ||
-    combinedText.includes('fan error') ||
-    combinedText.includes('extruder') ||
-    combinedText.includes('heatbed') ||
-    combinedText.includes('ams error')
-  ) {
-    return 'Failed';
+  if (printer.statusReason === 'stopped') {
+    return 'Stopped by user';
+  }
+
+  if (printer.statusReason === 'printing') {
+    return 'Printing';
+  }
+
+  if (printer.statusReason === 'finished') {
+    return 'Finished';
+  }
+
+  if (printer.statusReason === 'idle') {
+    return 'Idle';
+  }
+
+  if (printer.statusReason === 'telemetry') {
+    return 'Telemetry Missing';
+  }
+
+  if (printer.statusReason === 'access-code') {
+    return 'Access Code Error';
   }
 
   /*
-    Manual stop / cancel.
+    displayStatus fallback.
+    This is useful if mapDashboardData gives a clean display label.
   */
-  if (
-    combinedText.includes('stopped') ||
-    combinedText.includes('stop') ||
-    combinedText.includes('cancelled') ||
-    combinedText.includes('canceled') ||
-    combinedText.includes('cancel') ||
-    combinedText.includes('abort') ||
-    combinedText.includes('aborted') ||
-    combinedText.includes('terminated') ||
-    combinedText.includes('user stopped') ||
-    combinedText.includes('user cancel') ||
-    combinedText.includes('manual stop') ||
-    combinedText.includes('stopped by user') ||
-    combinedText.includes('cancelled by user') ||
-    combinedText.includes('canceled by user')
-  ) {
-    return 'Stopped';
+  if (printer.displayStatus) {
+    if (printer.displayStatus === 'Failed printing') {
+      const failureDetail = getFailureDetailLabel(printer);
+
+      return failureDetail
+        ? `Failed printing: ${failureDetail}`
+        : printer.displayStatus;
+    }
+
+    return printer.displayStatus;
   }
 
   /*
-    Plain FAILED from Bambu after pressing physical Stop.
+    Old fallback for older data shape.
+    This should only be used if rawStatus/statusReason are missing.
   */
-  if (combinedText.includes('failed')) {
-    return 'Stopped';
-  }
+  switch (printer.status) {
+    case 'printing':
+      return 'Printing';
 
-  if (printer.progress > 0 && printer.progress < 100) {
-    return 'Stopped';
-  }
+    case 'finished':
+      return 'Finished';
 
-  return 'Error';
+    case 'idle':
+      return 'Idle';
+
+    case 'error':
+      return 'Error';
+
+    default:
+      return 'Unknown';
+  }
 };
 
 export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
@@ -204,7 +267,7 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
               {printer.name}
             </h3>
 
-            <div className="mt-1 max-w-[170px]">
+            <div className="mt-1 max-w-[190px]">
               <StatusBadge status={printer.status} label={statusLabel} />
             </div>
           </div>
@@ -253,9 +316,7 @@ export const PrinterCard: React.FC<Props> = ({ printer, onClick }) => {
       <div className="space-y-4">
         <div>
           <div className="flex justify-between text-sm mb-1">
-            <span className="text-lab-subtext font-medium">
-              Job Progress
-            </span>
+            <span className="text-lab-subtext font-medium">Job Progress</span>
 
             <span className="font-bold text-lab-text">
               {Math.round(printer.progress)}%

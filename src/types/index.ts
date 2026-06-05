@@ -2,6 +2,16 @@ export type PrinterStatus = 'printing' | 'idle' | 'error' | 'finished';
 export type ViewType = 'fleet' | 'detail' | 'alerts' | 'visualization' | 'booking' | 'settings';
 export type BookingStatus = 'with-booking' | 'without-booking' | 'idle';
 
+export type PrinterStatusReason =
+  | 'printing'
+  | 'paused'
+  | 'failed'
+  | 'stopped'
+  | 'finished'
+  | 'idle'
+  | 'telemetry'
+  | 'access-code'
+  | 'unknown';
 export interface PrinterData {
   id: string;
   name: string;
@@ -24,6 +34,15 @@ export interface PrinterData {
   color: string;
 
   alerts: number;
+  rawStatus?: string | null;
+  displayStatus?: string;
+  statusReason?: PrinterStatusReason;
+
+  printError?: number | string | null;
+  failReason?: number | string | null;
+
+  lastCommand?: string | null;
+  lastCommandReason?: string | null;
 
   
   bookingWarning?: string | null;

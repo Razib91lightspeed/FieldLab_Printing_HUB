@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
-import { PrinterCard } from '../components/printer/PrinterCard';
 
+import { PrinterCard } from '../components/printer/PrinterCard';
 import { fetchDashboard } from '../api/dashboard';
 import { fetchPeppiBookings } from '../data/peppiApi';
 
@@ -15,6 +15,14 @@ interface Props {
   onViewAlerts: () => void;
 }
 
+/*
+  ConfigPrinter represents the printer config/health data returned by the backend.
+
+  Important long-term rule:
+  - Backend should decide real health_code values such as MQTT_AUTH_FAILED.
+  - FleetView should not guess access-code errors from generic MQTT/pipeline text.
+  - FleetView only converts backend health into UI-friendly PrinterData.
+*/
 interface ConfigPrinter {
   id: string;
   name: string;
@@ -22,22 +30,37 @@ interface ConfigPrinter {
   access_code?: string;
   serial: string;
   enabled: boolean;
+
   is_pipeline_healthy?: boolean;
 
-  // These may come from your backend/config health logic.
+  health_code?: string | null;
+  healthCode?: string | null;
+
   health_message?: string | null;
   healthMessage?: string | null;
+
   last_error?: string | null;
   lastError?: string | null;
+  last_error_at?: string | null;
+
   error?: string | null;
   status_message?: string | null;
   pipeline_status?: string | null;
 
-  last_seen?: string;
-  last_updated?: string;
+  last_seen?: string | null;
+  last_updated?: string | null;
+
+  access_validation_at?: string | null;
+  mqtt_validation_reason?: string | null;
 
   [key: string]: any;
 }
+
+/*
+  3 seconds gives FleetView quick visibility of backend health changes
+  without making the Pi/browser too busy.
+*/
+const DASHBOARD_REFRESH_MS = 3000;
 
 function normalizePrinterKey(value?: string) {
   return String(value || '')
@@ -114,15 +137,33 @@ function buildBookingBadge(booking: any) {
 }
 
 /*
-  This function is intentionally strict.
+  Access-code detection.
 
-  It should NOT mark every stale FIWARE printer as Access Code Error.
-  It only returns access-code warning when the config/backend explicitly gives
-  access-code, MQTT, auth, password, or pipeline/access-code style information.
+  Long-term rule:
+  - Prefer backend health_code.
+  - Text matching is only a safe fallback for explicit authentication words.
+  - Do not classify generic "mqtt", "pipeline", "stale", or "telemetry" as access-code error.
 */
 function getAccessCodeWarning(printer: ConfigPrinter): string | null {
   if (!printer.enabled) {
     return null;
+  }
+
+  const healthCode = String(
+    printer.health_code ||
+      printer.healthCode ||
+      printer.pipeline_status ||
+      ''
+  ).toUpperCase();
+
+  const explicitAccessCodeError =
+    healthCode === 'ACCESS_CODE_INVALID' ||
+    healthCode === 'MQTT_AUTH_FAILED' ||
+    healthCode === 'AUTH_FAILED' ||
+    healthCode === 'UNAUTHORIZED';
+
+  if (explicitAccessCodeError) {
+    return 'Access code error: MQTT authentication failed. Check the current printer access code in Settings.';
   }
 
   const combinedText = [
@@ -133,30 +174,26 @@ function getAccessCodeWarning(printer: ConfigPrinter): string | null {
     printer.error,
     printer.status_message,
     printer.pipeline_status,
+    printer.mqtt_validation_reason,
   ]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
 
-  const hasAccessCodeSignal =
-    combinedText.includes('access code') ||
-    combinedText.includes('mqtt') ||
+  const hasRealAuthFailure =
     combinedText.includes('unauthorized') ||
-    combinedText.includes('authentication') ||
-    combinedText.includes('auth') ||
-    combinedText.includes('password') ||
-    combinedText.includes('wrong code') ||
-    combinedText.includes('code may be wrong') ||
-    combinedText.includes('pipeline / access code');
+    combinedText.includes('not authorized') ||
+    combinedText.includes('authentication failed') ||
+    combinedText.includes('auth failed') ||
+    combinedText.includes('bad username') ||
+    combinedText.includes('bad password') ||
+    combinedText.includes('wrong access code') ||
+    combinedText.includes('invalid access code') ||
+    combinedText.includes('access code invalid') ||
+    combinedText.includes('code may be wrong');
 
-  const hasPipelineProblem =
-    printer.is_pipeline_healthy === false ||
-    combinedText.includes('pipeline') ||
-    combinedText.includes('not receiving fresh telemetry') ||
-    combinedText.includes('not alive');
-
-  if (hasAccessCodeSignal && hasPipelineProblem) {
-    return 'Access code error: printer MQTT/FIWARE pipeline is not receiving fresh telemetry. Check the current printer access code.';
+  if (hasRealAuthFailure) {
+    return 'Access code error: MQTT authentication failed. Check the current printer access code in Settings.';
   }
 
   return null;
@@ -167,16 +204,48 @@ function isAccessCodeWarning(value?: string | null): boolean {
 
   return (
     text.includes('access code error') ||
-    text.includes('access code') ||
-    text.includes('mqtt') ||
+    text.includes('mqtt authentication failed') ||
+    text.includes('wrong access code') ||
+    text.includes('invalid access code') ||
+    text.includes('access code invalid') ||
     text.includes('unauthorized') ||
-    text.includes('authentication') ||
-    text.includes('wrong code')
+    text.includes('not authorized') ||
+    text.includes('authentication failed')
   );
 }
 
+/*
+  Creates a fallback PrinterData object from config.
+
+  This is used when:
+  - FIWARE has no matching live entity for this printer.
+  - The printer is disabled.
+  - The backend has detected access-code or telemetry problems.
+
+  Important:
+  We set rawStatus/statusReason/displayStatus here so every UI component can
+  understand the state without reading bookingWarning text.
+*/
 function configPrinterToDashboardPrinter(printer: ConfigPrinter): PrinterData {
   const accessCodeWarning = getAccessCodeWarning(printer);
+
+  const rawStatus = accessCodeWarning
+    ? 'MQTT_AUTH_FAILED'
+    : printer.enabled
+      ? 'NO_FIWARE_TELEMETRY'
+      : 'DISABLED';
+
+  const statusReason = accessCodeWarning
+    ? 'access-code'
+    : printer.enabled
+      ? 'telemetry'
+      : 'idle';
+
+  const displayStatus = accessCodeWarning
+    ? 'Access Code Error'
+    : printer.enabled
+      ? 'Telemetry Missing'
+      : 'Idle';
 
   return {
     id: printer.id,
@@ -184,6 +253,10 @@ function configPrinterToDashboardPrinter(printer: ConfigPrinter): PrinterData {
     ip: printer.ip,
 
     status: printer.enabled ? 'error' : 'idle',
+    rawStatus,
+    statusReason,
+    displayStatus,
+
     progress: 0,
 
     jobName: printer.enabled ? 'No live FIWARE telemetry' : 'Disabled',
@@ -203,6 +276,7 @@ function configPrinterToDashboardPrinter(printer: ConfigPrinter): PrinterData {
 
     hasBooking: false,
     bookingTitle: null,
+
     bookingWarning:
       accessCodeWarning || (printer.enabled ? 'No FIWARE telemetry' : null),
 
@@ -212,6 +286,17 @@ function configPrinterToDashboardPrinter(printer: ConfigPrinter): PrinterData {
   };
 }
 
+/*
+  Merges backend config health with live FIWARE printer telemetry.
+
+  Normal case:
+  - Trust live FIWARE data for RUNNING / PAUSE / FAILED / FINISH.
+  - Those states are mapped in mapDashboardData.ts.
+
+  Access-code case:
+  - Backend config health wins over stale FIWARE data.
+  - This prevents an old FAILED/FINISH/RUNNING state from hiding MQTT_AUTH_FAILED.
+*/
 function mergeConfigWithLiveData(
   configPrinters: ConfigPrinter[],
   livePrinters: PrinterData[],
@@ -242,14 +327,6 @@ function mergeConfigWithLiveData(
       ? base.bookingWarning
       : null;
 
-    /*
-      Normal case:
-      Trust live FIWARE data.
-
-      Access-code case:
-      Do NOT trust stale FIWARE status like FAILED/FINISHED.
-      Force the card to show Access Code Error.
-    */
     return {
       ...base,
       ...live,
@@ -259,6 +336,9 @@ function mergeConfigWithLiveData(
       ip: base.ip || live.ip,
 
       status: accessCodeWarning ? 'error' : live.status,
+      rawStatus: accessCodeWarning ? 'MQTT_AUTH_FAILED' : live.rawStatus,
+      statusReason: accessCodeWarning ? 'access-code' : live.statusReason,
+      displayStatus: accessCodeWarning ? 'Access Code Error' : live.displayStatus,
 
       alerts: accessCodeWarning
         ? Math.max(base.alerts || 0, live.alerts || 0, 1)
@@ -280,15 +360,7 @@ export const FleetView: React.FC<Props> = ({
   const [loading, setLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState('');
 
-  useEffect(() => {
-    loadDashboard();
-
-    const interval = setInterval(loadDashboard, 5000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const loadDashboard = async () => {
+  const loadDashboard = useCallback(async () => {
     try {
       setDashboardError('');
 
@@ -297,10 +369,21 @@ export const FleetView: React.FC<Props> = ({
         fetchPeppiBookings(),
       ]);
 
+      /*
+        FIWARE live data carries real machine status:
+        RUNNING, PAUSE, FAILED, FINISH, etc.
+
+        mapDashboardData.ts must preserve these as:
+        rawStatus, statusReason, displayStatus.
+      */
       const mappedFiwarePrinters: PrinterData[] = mapDashboardData(
         dashboardData.printers || []
       );
 
+      /*
+        Config data carries backend health:
+        MQTT_AUTH_FAILED, telemetry missing, disabled, etc.
+      */
       const mergedPrinters = mergeConfigWithLiveData(
         dashboardData.configPrinters || [],
         mappedFiwarePrinters,
@@ -309,36 +392,43 @@ export const FleetView: React.FC<Props> = ({
 
       const bookingInfo = mapPeppiToPrinters(peppiBookings || []);
 
-      const mergedWithBookings: PrinterData[] = mergedPrinters.map((printer) => {
-        const booking = bookingInfo.find(
-          (item) =>
-            item.printerName.toLowerCase() === printer.name.toLowerCase() ||
-            item.printerId === printer.id
-        );
+      const mergedWithBookings: PrinterData[] = mergedPrinters.map(
+        (printer) => {
+          const booking = bookingInfo.find(
+            (item) =>
+              item.printerName.toLowerCase() === printer.name.toLowerCase() ||
+              item.printerId === printer.id
+          );
 
-        const hasBooking = !!booking?.hasActiveBooking;
-        const isPrinting = printer.status === 'printing';
+          const hasBooking = !!booking?.hasActiveBooking;
+          const isPrinting = printer.status === 'printing';
 
-        const bookingWarning =
-          isPrinting && !hasBooking
-            ? 'Printing without Peppi booking'
-            : printer.bookingWarning || null;
+          /*
+            Booking warning should not override access-code or telemetry warnings.
+            Only add "Printing without Peppi booking" when the printer is truly printing.
+          */
+          const bookingWarning =
+            isPrinting && !hasBooking
+              ? 'Printing without Peppi booking'
+              : printer.bookingWarning || null;
 
-        const bookingBadge = buildBookingBadge(booking);
+          const bookingBadge = buildBookingBadge(booking);
 
-        return {
-          ...printer,
-          hasBooking,
-          bookingTitle: booking?.currentBooking?.title || null,
-          bookingWarning,
+          return {
+            ...printer,
 
-          bookingStatusText: bookingBadge.bookingStatusText,
-          bookingStatusTone: bookingBadge.bookingStatusTone,
-          bookingPeriodText: bookingBadge.bookingPeriodText,
+            hasBooking,
+            bookingTitle: booking?.currentBooking?.title || null,
+            bookingWarning,
 
-          alerts: printer.alerts || 0,
-        };
-      });
+            bookingStatusText: bookingBadge.bookingStatusText,
+            bookingStatusTone: bookingBadge.bookingStatusTone,
+            bookingPeriodText: bookingBadge.bookingPeriodText,
+
+            alerts: printer.alerts || 0,
+          };
+        }
+      );
 
       setLivePrinters(mergedWithBookings);
       setLoading(false);
@@ -347,14 +437,26 @@ export const FleetView: React.FC<Props> = ({
 
       setDashboardError(err?.message || 'Dashboard backend is not reachable.');
 
+      /*
+        Backend unavailable fallback.
+        Keep this structured too, so PrinterCard and future components do not
+        need to infer status from warning text.
+      */
       const fallback = printers.map((printer) => ({
         ...printer,
+
         status: 'error' as const,
+        rawStatus: 'BACKEND_UNAVAILABLE',
+        statusReason: 'telemetry' as const,
+        displayStatus: 'Telemetry Missing',
+
         progress: 0,
         jobName: 'Backend unavailable',
         timeRemaining: 'No connection',
+
         alerts: Math.max(printer.alerts || 0, 1),
         bookingWarning: 'Dashboard backend unavailable',
+
         bookingStatusText: 'Booking unavailable',
         bookingStatusTone: 'unknown' as const,
         bookingPeriodText: null,
@@ -363,7 +465,15 @@ export const FleetView: React.FC<Props> = ({
       setLivePrinters(fallback);
       setLoading(false);
     }
-  };
+  }, [printers]);
+
+  useEffect(() => {
+    loadDashboard();
+
+    const interval = window.setInterval(loadDashboard, DASHBOARD_REFRESH_MS);
+
+    return () => window.clearInterval(interval);
+  }, [loadDashboard]);
 
   const activeCount = livePrinters.filter(
     (printer) => printer.status === 'printing'
@@ -402,6 +512,7 @@ export const FleetView: React.FC<Props> = ({
             <div className="text-2xl font-bold text-lab-primary">
               {activeCount}
             </div>
+
             <div className="text-xs text-lab-subtext uppercase tracking-wide">
               Active Jobs
             </div>
@@ -411,8 +522,9 @@ export const FleetView: React.FC<Props> = ({
 
       {totalAlerts > 0 && (
         <div className="mb-5 rounded-xl bg-yellow-50 border border-yellow-200 px-4 py-3 text-sm text-yellow-800">
-          {totalAlerts} dashboard warning{totalAlerts === 1 ? '' : 's'} detected.
-          Some printers may have telemetry, booking, or pipeline warnings.
+          {totalAlerts} dashboard warning{totalAlerts === 1 ? '' : 's'}{' '}
+          detected. Some printers may have telemetry, booking, or pipeline
+          warnings.
         </div>
       )}
 

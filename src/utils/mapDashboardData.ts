@@ -1,4 +1,4 @@
-import { PrinterData, PrinterStatus } from "../types";
+import { PrinterData, PrinterStatus, PrinterStatusReason } from "../types";
 
 type FiwareValue<T> = {
   value?: T;
@@ -10,11 +10,6 @@ type FiwarePrinter = {
   status?: FiwareValue<string>;
   progress?: FiwareValue<number>;
 
-  /*
-    These are the real remaining-time fields.
-    remainingTimeMinutes is the one we will send from the Pi/FIWARE later.
-    mc_remaining_time and remain_time are fallback names.
-  */
   remainingTimeMinutes?: FiwareValue<number | string | null>;
   mc_remaining_time?: FiwareValue<number | string | null>;
   remain_time?: FiwareValue<number | string | null>;
@@ -26,6 +21,18 @@ type FiwarePrinter = {
   color?: FiwareValue<string>;
   lastSeen?: FiwareValue<string>;
   online?: FiwareValue<boolean>;
+
+  printError?: FiwareValue<number | string | null>;
+  print_error?: FiwareValue<number | string | null>;
+  mc_print_error_code?: FiwareValue<number | string | null>;
+
+  failReason?: FiwareValue<number | string | null>;
+  fail_reason?: FiwareValue<number | string | null>;
+
+  lastCommand?: FiwareValue<string | null>;
+  last_command?: FiwareValue<string | null>;
+  lastCommandReason?: FiwareValue<string | null>;
+  last_command_reason?: FiwareValue<string | null>;
 };
 
 const PRINTER_META: Record<string, { ip: string }> = {
@@ -40,32 +47,117 @@ function extractPrinterName(id: string) {
   return id.split(":").pop()?.replaceAll("_", " ") || id;
 }
 
-function normalizeStatus(status?: string): PrinterStatus {
-  const s = String(status || "").toUpperCase();
+function normalizeRawStatus(status?: string | null): string {
+  return String(status || "UNKNOWN").trim().toUpperCase();
+}
 
-  if (s === "RUNNING") return "printing";
-  if (s === "PRINTING") return "printing";
+/*
+  This keeps the old UI severity field.
+  It should only control broad UI color/shape, not the exact displayed label.
+*/
+function normalizeStatus(status?: string | null): PrinterStatus {
+  const s = normalizeRawStatus(status);
 
-  if (s === "PAUSE") return "error";
-  if (s === "PAUSED") return "error";
+  if (s === "RUNNING" || s === "PRINTING") return "printing";
 
-  if (s === "FAILED") return "error";
-  if (s === "ERROR") return "error";
+  if (
+    s === "PAUSE" ||
+    s === "PAUSED" ||
+    s === "FAILED" ||
+    s === "ERROR" ||
+    s === "STOPPED_BY_USER" ||
+    s === "STOPPED" ||
+    s === "CANCELLED" ||
+    s === "CANCELED"
+  ) {
+    return "error";
+  }
 
-  if (s === "FINISH") return "finished";
-  if (s === "FINISHED") return "finished";
-  if (s === "COMPLETED") return "finished";
-  if (s === "COMPLETE") return "finished";
+  if (
+    s === "FINISH" ||
+    s === "FINISHED" ||
+    s === "COMPLETED" ||
+    s === "COMPLETE"
+  ) {
+    return "finished";
+  }
 
   if (s === "IDLE") return "idle";
 
   return "idle";
 }
 
-function inferAlerts(status?: string): number {
-  const s = String(status || "").toUpperCase();
+/*
+  This is the important long-term field.
+  It preserves the meaning that was previously lost when PAUSE/FAILED became "error".
+*/
+function getStatusReason(status?: string | null): PrinterStatusReason {
+  const s = normalizeRawStatus(status);
 
-  if (s === "PAUSE" || s === "PAUSED" || s === "FAILED" || s === "ERROR") {
+  if (s === "RUNNING" || s === "PRINTING") return "printing";
+
+  if (s === "PAUSE" || s === "PAUSED") return "paused";
+
+  if (s === "FAILED" || s === "ERROR") return "failed";
+
+  if (
+    s === "STOPPED_BY_USER" ||
+    s === "STOPPED" ||
+    s === "CANCELLED" ||
+    s === "CANCELED"
+  ) {
+    return "stopped";
+  }
+
+  if (
+    s === "FINISH" ||
+    s === "FINISHED" ||
+    s === "COMPLETED" ||
+    s === "COMPLETE"
+  ) {
+    return "finished";
+  }
+
+  if (s === "IDLE") return "idle";
+
+  return "unknown";
+}
+
+function getDisplayStatus(reason: PrinterStatusReason): string {
+  switch (reason) {
+    case "printing":
+      return "Printing";
+
+    case "paused":
+      return "Paused";
+
+    case "failed":
+      return "Failed printing";
+
+    case "stopped":
+      return "Stopped by user";
+
+    case "finished":
+      return "Finished";
+
+    case "idle":
+      return "Idle";
+
+    case "telemetry":
+      return "Telemetry Missing";
+
+    case "access-code":
+      return "Access Code Error";
+
+    default:
+      return "Unknown";
+  }
+}
+
+function inferAlerts(status?: string | null): number {
+  const reason = getStatusReason(status);
+
+  if (reason === "paused" || reason === "failed" || reason === "stopped") {
     return 1;
   }
 
@@ -96,20 +188,28 @@ function formatRemainingTime(minutes?: number | string | null): string {
 }
 
 function inferTimeRemaining(
-  status?: string,
+  status?: string | null,
   realRemainingMinutes?: number | string | null
 ): string {
-  const normalizedStatus = normalizeStatus(status);
+  const reason = getStatusReason(status);
 
-  if (normalizedStatus === "finished") {
+  if (reason === "finished") {
     return "Done";
   }
 
-  if (normalizedStatus === "error") {
+  if (reason === "paused") {
+    return "Paused";
+  }
+
+  if (reason === "failed") {
     return "Failed";
   }
 
-  if (normalizedStatus === "printing") {
+  if (reason === "stopped") {
+    return "Stopped";
+  }
+
+  if (reason === "printing") {
     const formatted = formatRemainingTime(realRemainingMinutes);
     return formatted === "-" ? "Calculating..." : formatted;
   }
@@ -126,7 +226,6 @@ function normalizeMaterial(raw?: string): string {
 
   const lower = value.toLowerCase();
 
-  // These are warning phrases, not actual material names.
   if (lower === "please refill pla" || lower === "refill pla") {
     return "Material status unavailable";
   }
@@ -134,9 +233,24 @@ function normalizeMaterial(raw?: string): string {
   return value;
 }
 
+function firstValue<T>(...values: Array<T | undefined | null>): T | null {
+  for (const value of values) {
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 export function mapDashboardData(printers: FiwarePrinter[]): PrinterData[] {
   return printers.map((p) => {
     const meta = PRINTER_META[p.id] || { ip: "-" };
+
+    const rawStatus = normalizeRawStatus(p.status?.value);
+    const statusReason = getStatusReason(rawStatus);
+    const displayStatus = getDisplayStatus(statusReason);
+
     const material = normalizeMaterial(p.material?.value);
 
     const realRemainingMinutes =
@@ -145,19 +259,41 @@ export function mapDashboardData(printers: FiwarePrinter[]): PrinterData[] {
       p.remain_time?.value ??
       null;
 
+    const printError = firstValue(
+      p.printError?.value,
+      p.print_error?.value,
+      p.mc_print_error_code?.value
+    );
+
+    const failReason = firstValue(
+      p.failReason?.value,
+      p.fail_reason?.value
+    );
+
+    const lastCommand = firstValue(
+      p.lastCommand?.value,
+      p.last_command?.value
+    );
+
+    const lastCommandReason = firstValue(
+      p.lastCommandReason?.value,
+      p.last_command_reason?.value
+    );
+
     return {
       id: p.id,
       name: extractPrinterName(p.id),
       ip: meta.ip,
 
-      status: normalizeStatus(p.status?.value),
+      status: normalizeStatus(rawStatus),
+      rawStatus,
+      statusReason,
+      displayStatus,
+
       progress: p.progress?.value ?? 0,
 
       jobName: p.jobName?.value || "-",
-      timeRemaining: inferTimeRemaining(
-        p.status?.value,
-        realRemainingMinutes
-      ),
+      timeRemaining: inferTimeRemaining(rawStatus, realRemainingMinutes),
       elapsedTime: "-",
 
       nozzleTemp: p.nozzleTemp?.value ?? 0,
@@ -169,7 +305,12 @@ export function mapDashboardData(printers: FiwarePrinter[]): PrinterData[] {
       material,
       color: p.color?.value || "Unknown",
 
-      alerts: inferAlerts(p.status?.value),
+      printError,
+      failReason,
+      lastCommand,
+      lastCommandReason,
+
+      alerts: inferAlerts(rawStatus),
 
       hasBooking: false,
       bookingTitle: null,

@@ -1,3 +1,18 @@
+export type PrinterHealthCode =
+  | 'MQTT_OK'
+  | 'MQTT_AUTH_FAILED'
+  | 'MQTT_CHECK_FAILED'
+  | 'ACCESS_CODE_INVALID'
+  | 'AUTH_FAILED'
+  | 'UNAUTHORIZED'
+  | 'VALIDATOR_EXCEPTION'
+  | 'VALIDATOR_COMMAND_FAILED'
+  | 'VALIDATOR_BAD_OUTPUT'
+  | 'VALIDATOR_SCRIPT_MISSING'
+  | 'VALIDATOR_PYTHON_MISSING'
+  | 'PRINTER_DISABLED'
+  | 'VALIDATION_DISABLED'
+  | null;
 export interface PrinterConfigItem {
   id: string;
   name: string;
@@ -7,12 +22,19 @@ export interface PrinterConfigItem {
   enabled: boolean;
 
   is_pipeline_healthy?: boolean;
-  needs_verification?: boolean;
-  health_message?: string;
 
-  last_seen?: string;
-  last_updated?: string;
+  health_code?: PrinterHealthCode;
+  health_message?: string | null;
+
+  last_error?: string | null;
+  last_error_at?: string | null;
+  last_seen?: string | null;
+  last_updated?: string | null;
+
+  access_validation_at?: string | null;
+  mqtt_validation_reason?: string | null;
 }
+
 
 export interface PrinterConfigResponse {
   last_updated?: string;

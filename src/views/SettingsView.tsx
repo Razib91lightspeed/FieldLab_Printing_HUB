@@ -66,6 +66,42 @@ function markPrinterWaitingForVerification(
     ),
   };
 }
+function mergeBackendHealthIntoCurrentConfig(
+  current: PrinterConfigResponse,
+  backend: PrinterConfigResponse
+): PrinterConfigResponse {
+  const backendById = new Map(
+    backend.printers.map((printer) => [printer.id, printer])
+  );
+
+  return {
+    ...current,
+    last_updated: backend.last_updated || current.last_updated,
+    printers: current.printers.map((printer) => {
+      const backendPrinter = backendById.get(printer.id);
+
+      if (!backendPrinter) {
+        return printer;
+      }
+
+      return {
+        ...printer,
+
+        is_pipeline_healthy: backendPrinter.is_pipeline_healthy,
+        health_code: backendPrinter.health_code,
+        health_message: backendPrinter.health_message,
+
+        last_error: backendPrinter.last_error,
+        last_error_at: backendPrinter.last_error_at,
+        last_seen: backendPrinter.last_seen,
+        last_updated: backendPrinter.last_updated,
+
+        access_validation_at: backendPrinter.access_validation_at,
+        mqtt_validation_reason: backendPrinter.mqtt_validation_reason,
+      };
+    }),
+  };
+}
 
 export const SettingsView: React.FC<Props> = ({ onBack }) => {
   const [config, setConfig] = useState<PrinterConfigResponse | null>(null);
@@ -190,24 +226,40 @@ export const SettingsView: React.FC<Props> = ({ onBack }) => {
     }
   };
 
-  const refreshLiveOnly = async () => {
-    try {
-      const liveData = await fetchLivePrinters();
-      const extractedLivePrinters = extractLivePrinters(liveData);
-      const builtLiveStateMap = buildLiveStateMap(extractedLivePrinters);
+const refreshLiveOnly = async () => {
+  try {
+    const [liveData, configData] = await Promise.all([
+      fetchLivePrinters(),
+      fetchPrinterConfig(),
+    ]);
 
-      setLiveStateMap(builtLiveStateMap);
-      setLiveRefreshError('');
-    } catch (err: any) {
-      console.error('Failed to refresh live printer states', err);
+    const extractedLivePrinters = extractLivePrinters(liveData);
+    const builtLiveStateMap = buildLiveStateMap(extractedLivePrinters);
 
-      setLiveStateMap({});
-      setLiveRefreshError(
-        getErrorMessage(err) ||
-          'Live printer telemetry is not reachable. MQTT/FIWARE pipeline may be down.'
-      );
-    }
-  };
+    setLiveStateMap(builtLiveStateMap);
+    setLiveRefreshError('');
+
+    setConfig((prev) => {
+      if (!prev) return configData;
+
+      return mergeBackendHealthIntoCurrentConfig(prev, configData);
+    });
+
+    setOriginalConfig((prev) => {
+      if (!prev) return cloneConfig(configData);
+
+      return mergeBackendHealthIntoCurrentConfig(prev, configData);
+    });
+  } catch (err: any) {
+    console.error('Failed to refresh live printer states', err);
+
+    setLiveStateMap({});
+    setLiveRefreshError(
+      getErrorMessage(err) ||
+        'Live printer telemetry is not reachable. MQTT/FIWARE pipeline may be down.'
+    );
+  }
+};
 
   const updatePrinterField = (
     index: number,
