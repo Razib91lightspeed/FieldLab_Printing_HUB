@@ -34,11 +34,6 @@ The interface is optimized for **large display screens used in laboratory spaces
 
 ---
 
-# Peppi API
-** https://peppi-utils.tuni.fi/tilakalenteri/
-
----
-
 # Key Features
 
 ## Real-Time Fleet Monitoring
@@ -139,7 +134,7 @@ Future integrations:
 The dashboard integrates **printer data and booking data** through a layered architecture.
 
 ```
-Peppi Booking API
+Peppi Booking API --> https://peppi-utils.tuni.fi/tilakalenteri/
         |
         v
 bookingAdapter.ts
