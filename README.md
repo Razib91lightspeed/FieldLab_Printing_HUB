@@ -34,6 +34,11 @@ The interface is optimized for **large display screens used in laboratory spaces
 
 ---
 
+# Peppi API
+** https://peppi-utils.tuni.fi/tilakalenteri/
+
+---
+
 # Key Features
 
 ## Real-Time Fleet Monitoring
